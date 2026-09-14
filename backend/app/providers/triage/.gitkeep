@@ -1,0 +1,2 @@
+# Triage provider implementations
+# All providers implement the TriageProvider Protocol defined in base.py.

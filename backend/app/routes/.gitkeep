@@ -1,0 +1,2 @@
+# Backend routes layer
+# HTTP handlers only — no business logic, no direct DB access.

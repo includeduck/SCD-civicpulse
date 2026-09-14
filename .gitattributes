@@ -1,0 +1,9 @@
+# Force LF line endings for text files in the repo
+* text=auto eol=lf
+
+# Explicitly binary
+*.png binary
+*.jpg binary
+*.mp4 binary
+*.tar binary
+*.gz binary
