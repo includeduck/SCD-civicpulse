@@ -57,7 +57,9 @@ Treat these as hard acceptance criteria.
   - triage
   - persist
   - return `201`
-  - return `400` for validation
+  - return `400` for validation (override FastAPI's default `422` via the
+    `RequestValidationError` handler; applies to every endpoint, including
+    query parameters such as `page_size > 100`)
   - return `429` with `Retry-After` when rate limited
 - List endpoint:
   - category filter
@@ -90,12 +92,14 @@ Complaint fields:
 - `id`: UUID, server generated
 - `text`: 10–2000 chars
 - `location`: 3–200 chars
-- `reporter_contact`: nullable
+- `reporter_contact`: nullable; stored but never returned by the API (PII, ADR 0004)
 - `category`: `water | electricity | sanitation | roads | streetlights | other`
 - `priority`: `high | normal | low`
 - `status`: `open | in_progress | resolved | rejected`
 - `ai_summary`: nullable, <= 140 chars
 - `triaged_by`: `llm:groq | llm:ollama | rules | rules:fallback`
+  (plus `simulated`, written only by `SimulatedTriage` in CI/tests and documented
+  in TRIAGE.md; seed data uses production labels only)
 - `triage_latency_ms`: integer
 - `created_at`: timestamptz UTC
 - `updated_at`: timestamptz UTC
@@ -128,12 +132,15 @@ Redis 7 must perform two jobs:
 ### Distributed rate limiter
 
 - Redis-backed
-- keyed by client IP
+- keyed by the real client IP (see §11.2: behind nginx/Ingress the socket
+  peer is the proxy, so read `X-Forwarded-For` from trusted proxies only)
 - fixed-window or token-bucket implementation
 - protects `POST /api/complaints`
 - `429`
 - `Retry-After`
 - must work correctly across multiple backend replicas
+- behavior when Redis is unavailable (fail-open or fail-closed) is decided,
+  tested and documented (§11.2)
 
 Redis AOF must be enabled on a named volume and justified in engineering notes.
 
@@ -159,6 +166,12 @@ class TriageProvider(Protocol):
         ...
 ```
 
+The interface stays synchronous, exactly as the assignment defines it (§2.5 of the
+brief; its contracts "are what gets tested"). Because the backend is async, the
+service calls providers through `run_in_threadpool`, so a slow LLM call occupies a
+worker thread rather than blocking the event loop. LLM/Ollama providers use a
+synchronous HTTP client with the 10 s timeout.
+
 Implement:
 
 1. `LLMTriage`
@@ -177,7 +190,8 @@ AI requirements:
 - never retry 400
 - fallback to `RuleBasedTriage`
 - fallback records `triaged_by = rules:fallback`
-- triage result cached by content hash in Redis for 24h
+- triage result cached by content hash in Redis for 24h (successful
+  provider results only, never `rules:fallback` results; see §10.8)
 - measured cache hit rate
 - API keys never logged
 - prompt-injection guardrail
@@ -294,7 +308,9 @@ Required proof:
 docker compose exec frontend ping database
 ```
 
-must fail.
+must fail. `database` must be a real hostname on the internal network
+(the Postgres service name or a network alias), otherwise the command fails
+for the wrong reason. Pair it with a positive control from the backend; see §14.7.
 
 Important architecture constraint:
 
@@ -420,6 +436,7 @@ feature/*
 Runs on:
 
 - PR to `main`
+- PR to `dev` (so feature-branch PRs are checked before review)
 - push to `dev`
 
 Must run:
@@ -643,6 +660,9 @@ Phase 15 Documentation + evidence + demo
 Phase 16 Final audit + submission
 ```
 
+Section numbers are offset from phase numbers (Phase N is described in section N + 5;
+Phase 16 is section 35).
+
 Do not skip directly from local code to "final CI." Each phase must produce a runnable checkpoint.
 
 ---
@@ -653,7 +673,7 @@ Every coding agent working on this repository must follow this protocol.
 
 ## Before editing
 
-1. Read this `ImplementationPlan.md`.
+1. Read this plan (`CivicPulse_ImplementationPlan.md`).
 2. Inspect the existing repository.
 3. Identify the current phase.
 4. Inspect relevant existing tests and contracts.
@@ -935,11 +955,42 @@ Verify rows remain.
 
 ## Goal
 
-Implement all core complaint behavior without AI complexity first.
+Implement all core complaint behavior end to end, with deterministic rule-based triage and no Redis or LLM complexity yet.
+
+## Prerequisites already in place (Phases 1–2)
+
+- `get_db` yields a session and **does not commit**; anything uncommitted is rolled back (see Unit of work below).
+- `update_status(..., expected_status=...)` is a compare-and-set update.
+- `list_complaints` orders by `created_at DESC, id DESC`.
+- `ComplaintResponse` uses enum types and never includes `reporter_contact`.
+- Validation errors return `400` with field-level errors.
+
+## Triage moved forward from Phase 4
+
+Complaint creation needs a category, priority and an honest `triaged_by` label, so Phase 3 delivers the minimum triage slice (plus the §2.2 requirement that
+`GET /api/meta/providers` return the last 20 triage outcomes):
+
+```text
+providers/triage/base.py    TriageResult, TriageProvider protocol (§1.4, synchronous)
+providers/triage/rules.py   RuleBasedTriage (spec in §9), triaged_by = "rules"
+```
+
+`ComplaintService` receives a `TriageProvider` through a FastAPI dependency. In Phase 3 that dependency always returns `RuleBasedTriage`. Phase 4 adds `SimulatedTriage` and the factory, and changes only the dependency, not the service.
+
+Tests inject a fake provider through `app.dependency_overrides`.
+
+## Placeholder interfaces for Phase 6
+
+Define these now so Phase 6 swaps implementations without touching services:
+
+```text
+StatsCache    get() / set(value, ttl) / invalidate()   Phase 3 impl: NoOpStatsCache (always MISS)
+RateLimiter   check(client_ip) -> None | raises RateLimitError   Phase 3 impl: AllowAllRateLimiter
+```
+
+Both are injected through dependencies. `GET /api/stats` already sets `X-Cache` from the cache result, so it reports `MISS` until Phase 6.
 
 ## Domain services
-
-Create:
 
 ```text
 ComplaintService
@@ -947,25 +998,30 @@ StatusService
 StatsService
 ```
 
-Potential responsibility split:
-
 ### ComplaintService
 
-- validate/use domain inputs
-- invoke triage service
-- persist complaint
-- invalidate relevant caches through cache abstraction
+- check the rate limiter (placeholder)
+- call the injected triage provider, measuring `triage_latency_ms`
+- persist the complaint
+- commit
+- invalidate the stats cache **after** the commit
 
 ### StatusService
 
-- own transition table
-- validate transition
-- update repository
+- owns `ALLOWED_TRANSITIONS`
+- validates the transition, then calls `update_status(..., expected_status=current)`
+- if the update returns `None`, re-reads: missing -> 404, status changed meanwhile -> 409
+- commits, then invalidates the stats cache
+- exposes `allowed_transitions(status)` for responses
 
 ### StatsService
 
-- aggregate stats
-- coordinate cache
+- aggregates counts by category, priority and status
+- reads through `StatsCache`
+
+## Unit of work
+
+Services own the transaction: `await session.commit()` before returning, then run post-commit side effects such as cache invalidation. Never rely on dependency teardown to commit. FastAPI runs code after `yield` once the response has been sent, so a failed commit there would follow a `201` the client already received.
 
 ## State machine
 
@@ -982,29 +1038,69 @@ ALLOWED_TRANSITIONS = {
 
 Do not implement this as scattered route-level conditionals.
 
+A same-status request (for example `open -> open`) is not in the table and returns `409`.
+
+409 body, rendered verbatim by the frontend:
+
+```json
+{
+  "detail": "Cannot transition complaint from 'resolved' to 'open'.",
+  "code": "invalid_transition"
+}
+```
+
+`ComplaintResponse` gains `allowed_transitions: list[Status]`, computed by `StatusService`. The dashboard offers only those actions and never copies the table (§1.5).
+
 ## Endpoints
 
-Implement all complaint endpoints except advanced AI/Redis behavior as placeholders through interfaces.
+| Endpoint | Success | Errors |
+|---|---|---|
+| `POST /api/complaints` | 201 + `ComplaintResponse` | 400 validation |
+| `GET /api/complaints/{id}` | 200 | 400 malformed UUID, 404 unknown id |
+| `GET /api/complaints` | 200 + `ComplaintListResponse` | 400 invalid filter or paging |
+| `PATCH /api/complaints/{id}/status` | 200 | 400 invalid body/status value, 404, 409 |
+| `GET /api/stats` | 200 + `StatsResponse`, `X-Cache` header | — |
+
+List query parameters:
+
+- `category`, `priority`, `status`: enum-typed, so an unknown value returns 400 instead of an empty list
+- `page`: integer >= 1, default 1
+- `page_size`: integer 1–100, default 20
+- `total` and `total_pages` computed with the same filters
+
+`reporter_contact` is accepted on `POST` and stored, but never returned by any endpoint. Record this in ADR 0004.
 
 ## Validation errors
 
-Return field-level errors.
+Return `400` with field-level errors (see §1.1).
+
+## Tests
+
+API tests may override `get_db` with SQLite for speed. Anything that depends on PostgreSQL behavior must also run against PostgreSQL 16, locally until CI provides a Postgres service in Phase 13. That covers CHECK constraints, timezone-aware timestamps, and the compare-and-set update.
 
 ## Exit criteria
 
 Tests cover:
 
-- valid complaint creation
-- invalid text length
-- invalid location
+- valid complaint creation -> 201, rule-based category/priority, `triaged_by == "rules"`, latency recorded
+- response never contains `reporter_contact`
+- invalid text length -> 400
+- invalid location -> 400
 - get existing complaint
 - get missing complaint -> 404
-- filters
-- pagination
-- page size >100 rejected
+- get malformed id -> 400
+- each filter, and unknown filter value -> 400
+- pagination, including stable ordering across pages
+- page size >100 -> 400, page < 1 -> 400
 - every valid status transition
-- every invalid transition -> 409
+- every invalid transition -> 409 with the exact message
+- same-status transition -> 409
 - terminal state behavior
+- `allowed_transitions` matches the table for every status
+- stale concurrent transition -> 409 (compare-and-set)
+- `GET /api/stats` counts by category, priority and status, with `X-Cache: MISS`
+- stats cache invalidated after create and after status change (verified with a fake `StatsCache`)
+- commit happens before the response: a failing commit returns 500, not 201
 
 ---
 
@@ -1016,16 +1112,15 @@ Make AI replaceable before implementing a real model.
 
 ## Tasks
 
-Create:
+`base.py` (`TriageResult`, `TriageProvider`) and `rules.py` are delivered in
+Phase 3 (§8). This phase adds:
 
 ```text
-providers/triage/base.py
-providers/triage/rules.py
 providers/triage/simulated.py
 providers/triage/factory.py
 ```
 
-Define enums and `TriageResult`.
+and replaces Phase 3's fixed `RuleBasedTriage` dependency with the factory.
 
 ## RuleBasedTriage
 
@@ -1076,6 +1171,9 @@ Must:
 - optionally produce predictable outcomes from input
 
 ## Factory
+
+`TRIAGE_PROVIDER` values are configuration names; the `triaged_by` label each
+provider records is a separate vocabulary (`llm` -> `llm:groq`, `ollama` -> `llm:ollama`).
 
 Select provider from:
 
@@ -1175,11 +1273,16 @@ Do not retry:
 
 Add jitter.
 
-Make retry behavior unit-testable by injecting a fake client.
+Make retry behavior unit-testable by injecting a fake client **and** the sleep
+function, so tests never really wait (see §15 Determinism).
+
+Worst-case triage time is about 2 × 10 s + jitter. Keep nginx/Ingress proxy read
+timeouts above that and document it.
 
 ## 10.6 Fallback
 
-On provider failure after retry:
+On any provider failure after retry (including timeout, 4xx/5xx, malformed JSON
+and Pydantic validation failure):
 
 ```text
 RuleBasedTriage
@@ -1225,7 +1328,12 @@ TTL:
 86400 seconds
 ```
 
-Cache only validated `TriageResult` data.
+Cache only validated `TriageResult` data **returned by the configured provider**.
+Never cache `rules:fallback` results: a short provider outage would otherwise
+pin rule-based answers for 24 hours.
+
+On a cache hit, store the original provider in `triaged_by` and the measured
+lookup time in `triage_latency_ms`; count the hit in the cache metrics.
 
 Measure:
 
@@ -1241,10 +1349,11 @@ Expose useful provider/latency/fallback information through `/api/meta/providers
 2. Provider timeout -> retry -> success.
 3. Provider 429 -> retry -> success.
 4. Provider 500 -> retry -> fallback.
-5. Provider 400 -> no retry -> fallback if configured as provider failure.
-6. Provider malformed JSON -> Pydantic validation failure.
+5. Provider 400 -> no retry -> fallback (`rules:fallback`).
+6. Provider malformed JSON -> Pydantic validation failure -> no retry -> fallback, POST still 201.
 7. Provider always raises -> POST still 201 + `rules:fallback`.
 8. Duplicate complaint -> AI cache HIT.
+8a. Complaint triaged via fallback -> not cached; next identical complaint calls the provider again.
 9. API key absent from logs.
 10. prompt injection input handled safely.
 
@@ -1279,7 +1388,7 @@ X-Cache: HIT
 X-Cache: MISS
 ```
 
-After a successful write:
+After a successful write (complaint creation **and** status change):
 
 ```text
 invalidate stats cache
@@ -1296,6 +1405,21 @@ Key:
 ```text
 rate_limit:complaints:{client_ip}
 ```
+
+### Client IP behind proxies
+
+Requests reach the backend through nginx (Compose) or the Ingress (Kubernetes), so
+`request.client.host` is the proxy, and every user would share one bucket. Derive the
+client IP from `X-Forwarded-For`, trusting it only from known proxies (for example
+uvicorn `--proxy-headers --forwarded-allow-ips=<proxy CIDRs>`). Never trust the header
+from arbitrary clients, or anyone can bypass the limit by spoofing it. Test both cases.
+
+### Redis unavailable
+
+Decide whether the limiter fails open (allow, log WARNING, increment a metric) or
+closed (return 503). Fail-open is usually preferable for a public intake form. Test
+and document the choice. Note that `/ready` checks Redis, so a Redis outage also
+removes backend pods from service; acknowledge this trade-off in the engineering notes.
 
 Choose fixed-window or token bucket.
 
@@ -1339,8 +1463,11 @@ Tests prove:
 - stats MISS first
 - stats HIT second
 - write invalidates cache
+- status change invalidates cache
 - rate limiter returns 429
 - Retry-After exists
+- clients behind the same trusted proxy get separate buckets
+- spoofed `X-Forwarded-For` from an untrusted peer is ignored
 - two backend processes share the same Redis rate limit
 - Redis restart behavior matches documented expectations
 
@@ -1594,6 +1721,11 @@ nginx:1.27-alpine
 
 Final stage must not contain Node toolchain.
 
+Non-root nginx cannot use the stock config as-is: listen on an unprivileged port
+(e.g. 8080) and make cache/pid paths writable, or base the runtime on
+`nginxinc/nginx-unprivileged` pinned to 1.27-alpine. Update published ports and
+Kubernetes `containerPort` to match.
+
 Check:
 
 ```bash
@@ -1645,6 +1777,16 @@ depends_on:
 
 Only use dependencies that are actually required by each service.
 
+### Migrations and seed
+
+Run `alembic upgrade head` and the seed in a one-shot `migrate` service that the
+backend depends on with `condition: service_completed_successfully`. Do not run
+them in every backend replica's startup: concurrent replicas race. This is how the
+one-command quickstart shows seeded data without manual SQL.
+
+Give the Postgres service the network alias `database` on the internal network so
+the §14.7 isolation proof targets a real host.
+
 ## 14.5 Hosted LLM network decision
 
 Because `internal: true` blocks outbound access, a hosted LLM request cannot originate from a service that only joins the internal network.
@@ -1681,15 +1823,15 @@ Run:
 docker compose exec frontend ping database
 ```
 
-Capture the failure as evidence.
-
-Also verify:
+Capture the failure as evidence. `ping` can also fail because a non-root container
+lacks raw-socket permission, so add a TCP check that isolates the network cause:
 
 ```bash
-docker compose exec backend ...
+docker compose exec frontend nc -z -w 2 database 5432   # must fail
+docker compose exec backend  nc -z -w 2 database 5432   # must succeed (positive control)
 ```
 
-can reach required internal services.
+Without the positive control, the negative result proves nothing.
 
 ---
 
@@ -1838,6 +1980,12 @@ Verify data survives.
 ## Redis
 
 Deployment + PVC.
+
+## Migrations and seed
+
+Run migrations and the seed once per deploy in a Kubernetes `Job` (or a single
+initContainer guarded by a Postgres advisory lock), never in every backend replica.
+The backend's readiness probe gates traffic until the schema exists.
 
 ## Services
 
@@ -2035,7 +2183,7 @@ Create `.github/workflows/ci.yml`.
 
 ```yaml
 pull_request:
-  branches: [main]
+  branches: [main, dev]
 
 push:
   branches: [dev]
@@ -2093,6 +2241,10 @@ CRITICAL
 ```
 
 Use a fixed scanner version where possible.
+
+Use `--ignore-unfixed` so CVEs with no available fix in the pinned base image do
+not block every PR. Anything else accepted goes in `.trivyignore` with a reason
+and review date.
 
 ## Kubeconform
 
@@ -2631,7 +2783,7 @@ When asking a coding agent to implement a phase, use this structure:
 You are working on CivicPulse.
 
 Read:
-- ImplementationPlan.md
+- CivicPulse_ImplementationPlan.md
 - relevant existing source/tests
 
 Current phase:
@@ -2773,435 +2925,11 @@ If only two human team members are available, these roles are logical workstream
 ---
 
 
-# 27.1 Graphify — Repository Knowledge Graph for Agents
-
-Graphify is an optional repository-understanding tool for CivicPulse agents. It should be used to **map and query the existing codebase, documentation, configuration, and related artifacts before making changes**. It is not the assignment specification, task tracker, architecture authority, or a replacement for reading `ImplementationPlan.md`.
-
-Graphify's repository provides a `/graphify` skill for AI coding assistants including Codex. It builds a queryable knowledge graph from the project, with local deterministic AST parsing for code and explainable `EXTRACTED` versus `INFERRED` relationships. It is a graph, not a vector index or embedding store. The normal outputs are `graphify-out/graph.html`, `graphify-out/GRAPH_REPORT.md`, and `graphify-out/graph.json`.
-
-## 27.1.1 Role in CivicPulse
-
-Use Graphify to reduce agent time spent blindly grepping through the repository.
-
-```text
-Assignment requirements
-        ↓
-ImplementationPlan.md   ← authoritative
-        ↓
-Graphify knowledge graph ← repository understanding / discovery
-        ↓
-Coding agent
-        ↓
-Tests + evidence + review
-```
-
-Graphify may help an agent answer questions such as:
-
-- Where is a concept implemented?
-- What code, tests, configuration, and documentation are connected to a component?
-- What depends on a service, repository, provider, cache, or frontend API client?
-- What is the path between two concepts or components?
-- Which parts of the repository are likely to be affected by a change?
-- What surrounding code should be read before editing a file?
-
-Graphify must **not** be used to invent requirements. If Graphify's inferred relationships conflict with explicit source code, tests, `ImplementationPlan.md`, or the assignment, the explicit source wins.
-
-## 27.1.2 Installation for This Project
-
-For a project-scoped Codex setup, install Graphify's skill into the repository:
-
-```bash
-uv tool install graphifyy
-
-graphify install --project --platform codex
-```
-
-Then build the repository graph from the project root:
-
-```text
-/graphify .
-```
-
-On PowerShell, use the CLI form below rather than a leading-slash command if necessary:
-
-```bash
-graphify .
-```
-
-For subsequent changes, refresh only changed content when appropriate:
-
-```text
-/graphify . --update
-```
-
-or from the CLI:
-
-```bash
-graphify update .
-```
-
-After a `git pull`, refresh the graph before trusting a query against newly pulled code:
-
-```bash
-graphify update .
-```
-
-## 27.1.3 Mandatory Agent Preflight
-
-Before implementing a non-trivial CivicPulse task, an agent should perform this sequence:
-
-```text
-1. Read ImplementationPlan.md.
-2. Identify the current phase and task acceptance criteria.
-3. Inspect the existing source/tests relevant to the task.
-4. Refresh Graphify if the repository changed since the last graph build.
-5. Query Graphify for the target component and its dependencies.
-6. Read the actual files returned by that discovery.
-7. Implement one bounded change.
-8. Run deterministic tests and required phase checks.
-9. Review the diff and evidence.
-```
-
-Example discovery commands:
-
-```text
-/graphify query "what connects the complaint API to triage and persistence?"
-
-/graphify query "where is rate limiting implemented and what depends on it?"
-
-/graphify path "ComplaintService" "ComplaintRepository"
-
-/graphify explain "RateLimiter"
-```
-
-For terminal use, the equivalent graph queries are:
-
-```bash
-graphify query "what connects the complaint API to triage and persistence?"
-graphify path "ComplaintService" "ComplaintRepository"
-graphify explain "RateLimiter"
-```
-
-Treat query output as navigation and context. **Always open and inspect the referenced source files before editing them.**
-
-## 27.1.4 Agent Prompt Pattern with Graphify
-
-For tasks where repository structure or dependencies are non-trivial, add this preflight to the existing Agent Task Format:
-
-```text
-Graphify preflight:
-- Refresh the graph if the repository has changed since the previous graph build.
-- Query the graph for the task's primary component and its direct dependencies.
-- Use path/explain queries where useful to understand relationships.
-- Read the actual source, tests, and configuration identified by Graphify.
-- Do not treat inferred graph relationships as authoritative requirements.
-- Do not edit generated Graphify output to make the graph match the implementation.
-```
-
-Then the normal task contract still applies:
-
-```text
-Read:
-- ImplementationPlan.md
-- relevant existing source/tests
-- Graphify results for the target area
-
-Task:
-[ONE COHERENT TASK]
-
-Requirements:
-- [explicit assignment/plan requirement]
-
-Constraints:
-- preserve architecture
-- do not modify unrelated behavior
-- deterministic tests
-- no secrets
-
-Acceptance criteria:
-- [criterion]
-
-Tests to run:
-- [commands]
-```
-
-## 27.1.5 Graphify Queries for Each CivicPulse Workstream
-
-### Backend Core
-
-Use Graphify to trace:
-
-```text
-route → service → repository → model
-route → dependency/configuration
-endpoint → test coverage
-```
-
-Useful questions:
-
-```text
-What connects POST /api/complaints to persistence?
-What depends on ComplaintService?
-Where are status transitions referenced?
-What tests exercise the complaint endpoints?
-```
-
-### AI / Redis
-
-Trace:
-
-```text
-triage service
-    → provider interface
-    → provider implementations
-    → retry/fallback
-    → AI cache
-
-stats endpoint
-    → stats service/repository
-    → Redis cache
-
-complaint submission
-    → distributed rate limiter
-```
-
-Useful questions:
-
-```text
-What connects triage to the provider factory?
-Where is the fallback path called?
-What invalidates the AI cache?
-What code reads/writes the Redis stats cache?
-What depends on the rate limiter?
-```
-
-### Frontend
-
-Trace:
-
-```text
-page/component → typed API client → endpoint contract
-page/component → state/error handling
-runtime configuration → API base URL
-```
-
-Useful questions:
-
-```text
-Which frontend components consume GET /api/stats?
-Where is the 409 status rendered?
-What depends on the typed API client?
-Where is runtime API configuration loaded?
-```
-
-### Docker / Compose
-
-Trace configuration dependencies:
-
-```text
-Dockerfile → application startup
-Compose service → environment variables
-Compose service → network
-Compose service → healthcheck
-Compose volume → persistence
-```
-
-Useful questions:
-
-```text
-Which services depend on PostgreSQL?
-Which services depend on Redis?
-Which containers share a network?
-Where are database credentials configured?
-```
-
-### Kubernetes
-
-Trace:
-
-```text
-Deployment → ConfigMap/Secret
-Deployment → Service
-Deployment → probes
-StatefulSet → PVC
-HPA → Deployment/resources
-Ingress → Service
-```
-
-Useful questions:
-
-```text
-What connects the backend Deployment to PostgreSQL?
-Which manifests provide backend environment variables?
-What Service exposes the frontend?
-Which resources does the HPA target?
-```
-
-### CI/CD
-
-Trace:
-
-```text
-workflow → test jobs → image build → scan → publish → deploy → smoke test
-workflow job → needs/dependencies
-workflow → Kubernetes manifests
-```
-
-Useful questions:
-
-```text
-What must pass before an image is published?
-Which job deploys the SHA-tagged image?
-What performs the smoke test?
-Where is rollback implemented?
-```
-
-## 27.1.6 Change Impact Analysis
-
-Before changing a shared component, query Graphify for its neighborhood and paths to major consumers.
-
-Example:
-
-```text
-Target: `ComplaintService`
-
-1. explain ComplaintService
-2. get/find the surrounding callers and dependencies from the graph
-3. inspect the corresponding routes, repositories, providers, and tests
-4. identify likely affected acceptance criteria
-5. make the smallest compatible change
-```
-
-This is especially useful for components that cross workstreams, such as:
-
-```text
-ComplaintService
-ProviderFactory
-RedisCache
-RateLimiter
-Typed API client
-Configuration/settings
-Kubernetes ConfigMap/Secret references
-CI workflow jobs
-```
-
-Do not assume every graph neighbor is a real runtime dependency. Confirm the relationship in source code.
-
-## 27.1.7 Keeping the Graph Current
-
-Graphify should be refreshed whenever repository content changes materially:
-
-```text
-New code or docs
-    ↓
-Graphify update
-    ↓
-New query results
-    ↓
-Agent implementation/review
-```
-
-Recommended moments to refresh:
-
-```bash
-# first setup
-graphify .
-
-# after pulling or merging changes
-graphify update .
-
-# after substantial local implementation work
-graphify update .
-```
-
-For a repository where the graph should stay synchronized automatically, Graphify also supports a Git hook workflow:
-
-```bash
-graphify hook install
-```
-
-Use this only as a convenience. The agent must still ensure the graph is current before relying on query results.
-
-## 27.1.8 Graphify Output and Evidence
-
-The generated artifacts can be useful during development:
-
-```text
-graphify-out/
-├── graph.html
-├── GRAPH_REPORT.md
-└── graph.json
-```
-
-They are **development/analysis artifacts**, not proof that an assignment requirement is satisfied.
-
-For CivicPulse, evidence must still come from the real implementation and reproducible checks described elsewhere in this plan. In particular:
-
-```text
-Graph relationship found
-        ≠
-Feature implemented
-        ≠
-Feature tested
-        ≠
-Requirement demonstrated
-```
-
-Never cite a Graphify edge as a substitute for runtime evidence, test output, Kubernetes output, CI output, or other required evidence.
-
-## 27.1.9 EXTRACTED vs INFERRED Relationships
-
-Graphify labels connections as:
-
-```text
-EXTRACTED  = explicitly supported by source content
-INFERRED  = relationship resolved by Graphify
-```
-
-Agents should prefer `EXTRACTED` relationships when making implementation decisions. `INFERRED` relationships are useful for discovery and hypothesis generation, but must be verified against the repository before being used as a basis for code changes.
-
-## 27.1.10 Scope and Security Rules
-
-Agents using Graphify must preserve the same repository hygiene rules as the rest of this plan:
-
-- Never place secrets, API keys, or credentials into Graphify queries or generated documentation.
-- Do not commit `.env` files or secret material merely because Graphify can discover project files.
-- Do not use Graphify output to justify exposing PostgreSQL or Redis.
-- Do not add application architecture solely to make the graph look more connected or impressive.
-- Do not modify implementation to satisfy an inferred graph relationship without confirming the assignment requirement.
-- Do not treat Graphify as a substitute for tests, code review, or the final compliance audit.
-
-## 27.1.11 Recommended Graphify Agent Loop
-
-For repository-heavy tasks, use this loop:
-
-```text
-READ PLAN
-   ↓
-REFRESH GRAPH IF NEEDED
-   ↓
-QUERY TARGET / EXPLAIN CONCEPT
-   ↓
-TRACE DEPENDENCIES / PATHS
-   ↓
-READ ACTUAL FILES
-   ↓
-IMPLEMENT ONE BOUNDED TASK
-   ↓
-TEST
-   ↓
-CHECK DIFF
-   ↓
-DOCUMENT / CAPTURE EVIDENCE
-   ↓
-REVIEW
-   ↓
-REFRESH GRAPH
-   ↓
-MOVE TO NEXT READY TASK
-```
-
-This complements the existing phased implementation order and agent work breakdown. Graphify improves **understanding and navigation**; it does not change the order, requirements, or definition of done.
+# 27.1 Graphify (optional tooling)
+
+Agents may use Graphify to map the repository before editing. Setup, query patterns and
+usage rules live in [docs/GRAPHIFY.md](docs/GRAPHIFY.md). Graphify output is navigation
+aid only: it never overrides this plan, source code or tests, and never counts as evidence.
 
 ---
 
@@ -3374,13 +3102,15 @@ docker compose up -d
 
 Verify rows remain.
 
-Test network isolation:
+Test network isolation (§14.7):
 
 ```bash
 docker compose exec frontend ping database
+docker compose exec frontend nc -z -w 2 database 5432
+docker compose exec backend  nc -z -w 2 database 5432
 ```
 
-Must fail.
+Frontend checks must fail; backend check must succeed.
 
 ## Kubernetes
 
@@ -3562,7 +3292,12 @@ Agents should prefer:
 
 ---
 
-# 35. Final Agent Audit Prompt
+# 35. Phase 16 — Final Audit and Submission
+
+Run the audit prompt below, fix every FAIL/PARTIAL, run `scripts/check_submission.py`,
+repeat §30 from a clean clone, and complete the §36 checklist.
+
+## Final Agent Audit Prompt
 
 At the end of implementation, give an agent this task:
 
@@ -3570,7 +3305,7 @@ At the end of implementation, give an agent this task:
 Perform a strict CivicPulse compliance audit.
 
 Read:
-- ImplementationPlan.md
+- CivicPulse_ImplementationPlan.md
 - entire repository
 - tests
 - Dockerfiles
@@ -3660,12 +3395,13 @@ Do not mark a requirement PASS based solely on code appearance if it requires ru
 - [ ] Timeout 10s
 - [ ] One retry with jitter for retryable errors
 - [ ] Fallback works
-- [ ] AI cache works
+- [ ] AI cache works (fallback results not cached)
 - [ ] Prompt injection test exists
 - [ ] PII ADR complete
 - [ ] Redis stats cache works
 - [ ] Redis rate limiter works
 - [ ] Retry-After works
+- [ ] Rate limiter uses real client IP behind proxy
 - [ ] Docker images are multi-stage
 - [ ] Images are non-root
 - [ ] Images are pinned

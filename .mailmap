@@ -1,0 +1,3 @@
+# Maps commits made under a misconfigured local identity to the real author,
+# so `git shortlog -sn` and `git log` attribute them correctly.
+Muhammad Wasay Tariq <teasingduck7@gmail.com> Developer <developer@gpasystem.local>
