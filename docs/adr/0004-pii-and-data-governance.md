@@ -13,6 +13,8 @@ Complaint submissions may include `reporter_contact` (email/phone) and free-text
 ## Decision
 
 1. `reporter_contact` is nullable and stored in the database but **never logged**.
+   It is also **never returned by the API**: the endpoints are unauthenticated, so
+   exposing it would publish every reporter's contact details (`ComplaintResponse` omits it).
 2. Complaint text is sent to the triage provider (LLM) but **API keys are never logged**.
 3. The system applies a prompt-injection guardrail before sending text to LLMs.
 4. Logs use structured JSON and explicitly exclude PII fields.
