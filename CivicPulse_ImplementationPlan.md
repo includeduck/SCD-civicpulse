@@ -162,14 +162,15 @@ Define a provider interface/protocol:
 class TriageProvider(Protocol):
     name: str
 
-    async def triage(self, text: str, location: str) -> TriageResult:
+    def triage(self, text: str, location: str) -> TriageResult:
         ...
 ```
 
-The method is `async` because the backend is fully async (asyncpg, async
-SQLAlchemy). A blocking HTTP call inside a route would stall the event loop
-for up to the full timeout + retry window. Rules/simulated providers are
-trivially async; LLM/Ollama use `httpx.AsyncClient`.
+The interface stays synchronous, exactly as the assignment defines it (§2.5 of the
+brief; its contracts "are what gets tested"). Because the backend is async, the
+service calls providers through `run_in_threadpool`, so a slow LLM call occupies a
+worker thread rather than blocking the event loop. LLM/Ollama providers use a
+synchronous HTTP client with the 10 s timeout.
 
 Implement:
 
@@ -966,10 +967,11 @@ Implement all core complaint behavior end to end, with deterministic rule-based 
 
 ## Triage moved forward from Phase 4
 
-Complaint creation needs a category, priority and an honest `triaged_by` label, so Phase 3 delivers the minimum triage slice:
+Complaint creation needs a category, priority and an honest `triaged_by` label, so Phase 3 delivers the minimum triage slice (plus the §2.2 requirement that
+`GET /api/meta/providers` return the last 20 triage outcomes):
 
 ```text
-providers/triage/base.py    TriageResult, async TriageProvider protocol (§1.4)
+providers/triage/base.py    TriageResult, TriageProvider protocol (§1.4, synchronous)
 providers/triage/rules.py   RuleBasedTriage (spec in §9), triaged_by = "rules"
 ```
 
@@ -1110,7 +1112,7 @@ Make AI replaceable before implementing a real model.
 
 ## Tasks
 
-`base.py` (`TriageResult`, async `TriageProvider`) and `rules.py` are delivered in
+`base.py` (`TriageResult`, `TriageProvider`) and `rules.py` are delivered in
 Phase 3 (§8). This phase adds:
 
 ```text
