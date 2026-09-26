@@ -59,6 +59,10 @@ class TriageBadRequestError(TriageError):
     """Provider returned 400: the request was wrong and will be wrong again."""
 
 
+class TriageUnavailableError(TriageError):
+    """Provider could not be reached at all (DNS, connection refused)."""
+
+
 class TriageInvalidOutputError(TriageError):
     """Provider answered, but the answer failed TriageResult validation."""
 

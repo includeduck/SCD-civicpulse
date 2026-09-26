@@ -7,6 +7,8 @@ from pydantic import ValidationError
 
 from app.core.config import Settings
 from app.providers.triage.factory import TriageConfigurationError, build_triage_provider
+from app.providers.triage.llm import LLMTriage
+from app.providers.triage.ollama import OllamaTriage
 from app.providers.triage.rules import RuleBasedTriage
 from app.providers.triage.simulated import SimulatedTriage
 
@@ -32,10 +34,26 @@ def test_selects_simulated_with_its_settings():
     assert (provider.seed, provider.failure_mode, provider.failure_rate) == (9, "timeout", 0.25)
 
 
-@pytest.mark.parametrize("name", ["llm", "ollama"])
-def test_unimplemented_providers_fail_clearly(name: str):
-    with pytest.raises(TriageConfigurationError, match="Phase 5"):
-        build_triage_provider(_settings(triage_provider=name))
+def test_selects_llm_when_key_present():
+    provider = build_triage_provider(
+        _settings(triage_provider="llm", groq_api_key="test-key", groq_model="small-model")
+    )
+    assert isinstance(provider, LLMTriage)
+    assert provider.name == "llm:groq"
+    assert "test-key" not in repr(provider)
+
+
+def test_llm_without_key_fails_clearly():
+    with pytest.raises(TriageConfigurationError, match="GROQ_API_KEY"):
+        build_triage_provider(_settings(triage_provider="llm", groq_api_key=""))
+
+
+def test_selects_ollama():
+    provider = build_triage_provider(
+        _settings(triage_provider="ollama", ollama_base_url="http://ollama:11434")
+    )
+    assert isinstance(provider, OllamaTriage)
+    assert provider.name == "llm:ollama"
 
 
 def test_unknown_provider_rejected_by_settings(monkeypatch):
@@ -48,7 +66,8 @@ def test_misconfiguration_fails_at_startup_not_on_first_request(monkeypatch):
     from app.core.config import get_settings
     from app.main import create_app
 
-    monkeypatch.setenv("TRIAGE_PROVIDER", "ollama")
+    monkeypatch.setenv("TRIAGE_PROVIDER", "llm")
+    monkeypatch.setenv("GROQ_API_KEY", "")
     get_settings.cache_clear()
     try:
         with pytest.raises(TriageConfigurationError):

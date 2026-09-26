@@ -9,7 +9,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, PostgresDsn, RedisDsn, field_validator
+from pydantic import Field, PostgresDsn, RedisDsn, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -62,16 +62,22 @@ class Settings(BaseSettings):
     # Values follow plan §9 (factory). Provider *labels* stored in
     # complaints.triaged_by (e.g. "llm:groq") are a separate vocabulary.
     triage_provider: Literal["llm", "ollama", "rules", "simulated"] = "simulated"
-    triage_timeout_seconds: int = 10
+    # Hard cap on one provider call, enforced by TriageService (assignment §2.5).
+    triage_timeout_seconds: float = 10.0
+    # Base delay before the single retry; actual delay is jittered to 50–150%.
+    triage_retry_base_seconds: float = 0.5
     # SimulatedTriage only (CI/tests/demos); see app/providers/triage/simulated.py.
     simulated_seed: int = 42
     simulated_failure_mode: Literal[
         "none", "timeout", "rate_limited", "server_error", "bad_request", "error", "invalid"
     ] = "none"
     simulated_failure_rate: float = Field(default=1.0, ge=0.0, le=1.0)
-    groq_api_key: str = ""
+    # SecretStr: repr/str/model_dump never reveal the key, so it cannot leak into logs.
+    groq_api_key: SecretStr = SecretStr("")
+    groq_base_url: str = "https://api.groq.com/openai/v1"
+    groq_model: str = "llama-3.1-8b-instant"
     ollama_base_url: str = "http://localhost:11434"
-    ollama_model: str = "llama3.2"
+    ollama_model: str = "llama3.2:1b"
 
     @property
     def allowed_origins(self) -> list[str]:
