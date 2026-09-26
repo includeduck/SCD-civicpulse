@@ -19,6 +19,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import ValidationError
 from redis.asyncio import Redis
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from app.core.config import get_settings
 from app.core.exceptions import (
@@ -104,6 +105,12 @@ def create_app() -> FastAPI:
         expose_headers=["X-Request-ID", "X-Cache", "Retry-After"],
     )
     app.add_middleware(RequestIDMiddleware)
+    # Outermost: resolve the real client IP from X-Forwarded-For, but only when
+    # the request comes from a trusted proxy (nginx / Ingress).
+    app.add_middleware(
+        ProxyHeadersMiddleware,
+        trusted_hosts=[h.strip() for h in settings.forwarded_allow_ips.split(",") if h.strip()],
+    )
 
     # ── Routers ─────────────────────────────────────────────────────
     # Health and operational probes mounted at root

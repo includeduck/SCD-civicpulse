@@ -37,6 +37,18 @@ TRIAGE_RETRIES = Counter(
     "Provider calls retried after a retryable error",
     ["provider", "error_class"],
 )
+# Redis job 1 and job 2 (assignment §2.4).
+STATS_CACHE = Counter(
+    "civicpulse_stats_cache_total",
+    "Stats cache lookups by result (hit, miss, error)",
+    ["result"],
+)
+RATE_LIMIT = Counter(
+    "civicpulse_rate_limit_total",
+    "Rate limiter decisions on POST /api/complaints (allowed, rejected, error)",
+    ["outcome"],
+)
+
 TRIAGE_CACHE = Counter(
     "civicpulse_triage_cache_total",
     "AI triage cache lookups by result",

@@ -71,10 +71,6 @@ async def civicpulse_error_handler(request: Request, exc: CivicPulseError) -> JS
     headers: dict[str, str] = {}
     if isinstance(exc, RateLimitError):
         headers["Retry-After"] = str(exc.retry_after)
-        logger.warning(
-            "Rate limit exceeded",
-            extra={"client": request.client and request.client.host},
-        )
     else:
         logger.info("Domain error: %s — %s", exc.code, exc.detail)
 
