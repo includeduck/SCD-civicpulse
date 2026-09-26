@@ -47,6 +47,48 @@ docker compose up --build
 
 ---
 
+## Backend Development
+
+Run the backend outside Docker for faster iteration (Python 3.12+):
+
+```bash
+cd backend
+pip install -e ".[dev]"
+
+# Apply database migrations (uses DATABASE_URL from .env)
+alembic upgrade head
+
+# Seed ~32 sample complaints (idempotent — safe to re-run)
+python -m scripts.seed_db
+
+# Run the API with hot reload
+uvicorn app.main:app --reload
+
+# Lint and test (coverage report included)
+ruff check .
+pytest
+```
+
+The backend follows a 4-layer architecture: **routes → services → repositories → models**, with AI triage behind a provider interface in `app/providers/triage/`.
+
+---
+
+## Project Status
+
+| Phase | Scope | Status |
+|-------|-------|--------|
+| 0 | Repository and team workflow | ✅ Done |
+| 1 | Backend foundation (FastAPI, config, logging, health probes) | ✅ Done |
+| 2 | Database models, Alembic migrations, repositories, seed | ✅ Done |
+| 3 | Complaint domain and API | ⏳ Next |
+| 4–7 | Triage providers, Redis cache/rate limiting, observability | 🔜 Planned |
+| 8–9 | Frontend, Docker Compose | 🔜 Planned |
+| 10–15 | Tests, Kubernetes, CI/CD, documentation | 🔜 Planned |
+
+See [CivicPulse_ImplementationPlan.md](CivicPulse_ImplementationPlan.md) for the full plan.
+
+---
+
 ## API Reference
 
 | Method | Path | Description |
