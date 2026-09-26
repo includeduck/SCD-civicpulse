@@ -2,8 +2,7 @@
 
 > **CS4032 Software Construction and Design — Assignment 01**
 
-[![CI](https://github.com/includeduck/SCD-civicpulse/actions/workflows/ci.yml/badge.svg)](https://github.com/includeduck/SCD-civicpulse/actions/workflows/ci.yml)
-[![CD](https://github.com/includeduck/SCD-civicpulse/actions/workflows/cd.yml/badge.svg)](https://github.com/includeduck/SCD-civicpulse/actions/workflows/cd.yml)
+<!-- CI/CD badges are added in Phases 13–14, once .github/workflows/ci.yml and cd.yml exist. -->
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 ## Problem Statement
@@ -26,6 +25,8 @@ graph TD
 ---
 
 ## Quick Start (local)
+
+> **Not available yet.** `compose.yaml` arrives in Phase 9. Until then, run the backend directly — see [Backend Development](#backend-development). The steps below are the target workflow.
 
 ```bash
 # 1. Clone
@@ -91,21 +92,25 @@ See [CivicPulse_ImplementationPlan.md](CivicPulse_ImplementationPlan.md) for the
 
 ## API Reference
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/api/complaints` | Submit a new complaint (rate-limited, AI-triaged) |
-| `GET` | `/api/complaints` | List complaints (filterable, paginated) |
-| `GET` | `/api/complaints/{id}` | Get a single complaint |
-| `PATCH` | `/api/complaints/{id}/status` | Transition complaint status |
-| `GET` | `/api/stats` | Aggregate stats (Redis-cached, 30 s TTL) |
-| `GET` | `/api/meta/providers` | Triage provider info and metrics |
-| `GET` | `/health` | Liveness probe (no DB) |
-| `GET` | `/ready` | Readiness probe (checks PG + Redis) |
-| `GET` | `/metrics` | Prometheus metrics |
+| Method | Path | Description | Status |
+|--------|------|-------------|--------|
+| `POST` | `/api/complaints` | Submit a new complaint (rate-limited, AI-triaged) | Phase 3 |
+| `GET` | `/api/complaints` | List complaints (filterable, paginated) | Phase 3 |
+| `GET` | `/api/complaints/{id}` | Get a single complaint | Phase 3 |
+| `PATCH` | `/api/complaints/{id}/status` | Transition complaint status | Phase 3 |
+| `GET` | `/api/stats` | Aggregate stats (Redis-cached, 30 s TTL) | Phase 3/6 |
+| `GET` | `/api/meta/providers` | Triage provider info and metrics | ✅ |
+| `GET` | `/health` | Liveness probe (no DB) | ✅ |
+| `GET` | `/ready` | Readiness probe (checks PG + Redis) | ✅ |
+| `GET` | `/metrics` | Prometheus metrics | ✅ |
+
+Invalid input returns `400` with field-level errors; invalid status transitions return `409`; rate-limited requests return `429` with `Retry-After`.
 
 ---
 
 ## Kubernetes (local)
+
+> **Not available yet** — manifests and `scripts/k8s-up.sh` arrive in Phases 11–12.
 
 ```bash
 # Requires k3d or kind installed

@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, FastAPI, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.testclient import TestClient
+from pydantic import BaseModel, Field, ValidationError
 
 from app.core.exceptions import (
     CivicPulseError,
@@ -12,13 +14,21 @@ from app.core.exceptions import (
     RateLimitError,
     civicpulse_error_handler,
     generic_exception_handler,
+    pydantic_validation_handler,
+    validation_exception_handler,
 )
+
+
+class _Body(BaseModel):
+    text: str = Field(min_length=10)
 
 
 def _create_test_app() -> FastAPI:
     """Create a minimal app with exception handlers to test custom errors."""
     app = FastAPI()
     app.add_exception_handler(CivicPulseError, civicpulse_error_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(RequestValidationError, validation_exception_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(ValidationError, pydantic_validation_handler)  # type: ignore[arg-type]
     app.add_exception_handler(Exception, generic_exception_handler)
 
     test_router = APIRouter()
@@ -38,6 +48,14 @@ def _create_test_app() -> FastAPI:
     @test_router.get("/trigger-500")
     async def trigger_500():
         raise RuntimeError("Unexpected failure")
+
+    @test_router.post("/validate")
+    async def validate(body: _Body):
+        return body
+
+    @test_router.get("/trigger-pydantic")
+    async def trigger_pydantic():
+        _Body(text="short")
 
     app.include_router(test_router)
     return app
@@ -80,3 +98,21 @@ def test_generic_exception_handling():
         assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
         data = response.json()
         assert data["code"] == "internal_error"
+
+
+def test_request_validation_returns_400_with_field_errors():
+    app = _create_test_app()
+    with TestClient(app) as client:
+        response = client.post("/validate", json={"text": "short"})
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        data = response.json()
+        assert data["code"] == "validation_error"
+        assert data["detail"][0]["loc"] == ["body", "text"]
+
+
+def test_pydantic_validation_in_business_logic_returns_400():
+    app = _create_test_app()
+    with TestClient(app) as client:
+        response = client.get("/trigger-pydantic")
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert response.json()["code"] == "validation_error"
