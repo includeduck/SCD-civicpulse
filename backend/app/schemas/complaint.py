@@ -67,6 +67,13 @@ class ComplaintResponse(BaseModel):
     triage_latency_ms: int | None
     created_at: datetime
     updated_at: datetime
+    allowed_transitions: list[Status] = Field(
+        ...,
+        description=(
+            "Statuses this complaint may move to next, computed by the backend's "
+            "state machine. The frontend renders these; it never hardcodes them."
+        ),
+    )
 
 
 class ComplaintListResponse(BaseModel):
