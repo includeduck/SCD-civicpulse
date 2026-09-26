@@ -15,7 +15,7 @@ from typing import Any
 
 from fastapi import APIRouter, Response, status
 from fastapi.responses import JSONResponse
-from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from sqlalchemy import text
 
 from app.core.config import get_settings
@@ -27,19 +27,6 @@ logger = logging.getLogger(__name__)
 READINESS_CHECK_TIMEOUT_SECONDS = 2.0
 
 router = APIRouter(tags=["Health & Diagnostics"])
-
-# Prometheus Metrics
-REQUEST_COUNT = Counter(
-    "civicpulse_requests_total",
-    "Total HTTP requests handled",
-    ["method", "endpoint", "status_code"],
-)
-REQUEST_LATENCY = Histogram(
-    "civicpulse_request_duration_seconds",
-    "HTTP request latency in seconds",
-    ["method", "endpoint"],
-)
-
 
 @router.get("/health", status_code=status.HTTP_200_OK, summary="Liveness Probe")
 async def health() -> dict[str, str]:

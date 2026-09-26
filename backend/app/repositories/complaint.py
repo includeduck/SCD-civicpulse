@@ -27,6 +27,7 @@ async def create_complaint(
     *,
     text: str,
     location: str,
+    complaint_id: uuid.UUID | None = None,
     reporter_contact: str | None = None,
     category: str = Category.other,
     priority: str = Priority.normal,
@@ -35,8 +36,13 @@ async def create_complaint(
     triaged_by: str | None = None,
     triage_latency_ms: int | None = None,
 ) -> Complaint:
-    """Persist a new complaint and return the hydrated ORM object."""
+    """Persist a new complaint and return the hydrated ORM object.
+
+    ``complaint_id`` lets the service assign the id before triage, so a triage
+    fallback warning can name the complaint it belongs to.
+    """
     complaint = Complaint(
+        id=complaint_id or uuid.uuid4(),
         text=text,
         location=location,
         reporter_contact=reporter_contact,

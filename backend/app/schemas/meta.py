@@ -12,7 +12,7 @@ class ProviderMeta(BaseModel):
     name: str  # TRIAGE_PROVIDER value that selects this provider
     triaged_by: str  # label recorded on complaints triaged by this provider
     active: bool
-    timeout_seconds: int
+    timeout_seconds: float
     fallback_provider: str | None = None
     description: str
 
@@ -27,7 +27,16 @@ class TriageOutcome(BaseModel):
     created_at: datetime
 
 
+class TriageCacheStats(BaseModel):
+    """AI triage cache effectiveness, counted in Redis across all replicas."""
+
+    hits: int
+    misses: int
+    hit_rate: float | None  # None until the first lookup
+
+
 class ProvidersResponse(BaseModel):
     active_provider: str
     providers: list[ProviderMeta]
     recent_outcomes: list[TriageOutcome]
+    cache: TriageCacheStats

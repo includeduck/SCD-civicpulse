@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from app.core.config import Settings
 from app.providers.triage.base import TriageProvider
+from app.providers.triage.llm import LLMTriage
+from app.providers.triage.ollama import OllamaTriage
 from app.providers.triage.rules import RuleBasedTriage
 from app.providers.triage.simulated import SimulatedTriage
 
@@ -26,10 +28,23 @@ def build_triage_provider(settings: Settings) -> TriageProvider:
             failure_mode=settings.simulated_failure_mode,
             failure_rate=settings.simulated_failure_rate,
         )
-    if name in ("llm", "ollama"):
-        raise TriageConfigurationError(
-            f"TRIAGE_PROVIDER={name} is not implemented yet (Phase 5). "
-            "Use 'simulated' or 'rules'."
+    if name == "llm":
+        api_key = settings.groq_api_key.get_secret_value()
+        if not api_key:
+            raise TriageConfigurationError(
+                "TRIAGE_PROVIDER=llm requires GROQ_API_KEY (from the environment or a Secret)."
+            )
+        return LLMTriage(
+            api_key=api_key,
+            model=settings.groq_model,
+            base_url=settings.groq_base_url,
+            timeout_seconds=settings.triage_timeout_seconds,
+        )
+    if name == "ollama":
+        return OllamaTriage(
+            base_url=settings.ollama_base_url,
+            model=settings.ollama_model,
+            timeout_seconds=settings.triage_timeout_seconds,
         )
     raise TriageConfigurationError(
         f"Unknown TRIAGE_PROVIDER={name!r}; expected one of: llm, ollama, rules, simulated."
