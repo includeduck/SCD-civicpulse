@@ -63,6 +63,12 @@ class Settings(BaseSettings):
     # complaints.triaged_by (e.g. "llm:groq") are a separate vocabulary.
     triage_provider: Literal["llm", "ollama", "rules", "simulated"] = "simulated"
     triage_timeout_seconds: int = 10
+    # SimulatedTriage only (CI/tests/demos); see app/providers/triage/simulated.py.
+    simulated_seed: int = 42
+    simulated_failure_mode: Literal[
+        "none", "timeout", "rate_limited", "server_error", "bad_request", "error", "invalid"
+    ] = "none"
+    simulated_failure_rate: float = Field(default=1.0, ge=0.0, le=1.0)
     groq_api_key: str = ""
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "llama3.2"
