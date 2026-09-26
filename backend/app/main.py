@@ -32,6 +32,7 @@ from app.core.middleware import RequestIDMiddleware
 from app.routes.complaints import router as complaints_router
 from app.routes.health import router as health_router
 from app.routes.meta import router as meta_router
+from app.routes.stats import router as stats_router
 
 logger = get_logger(__name__)
 
@@ -102,6 +103,7 @@ def create_app() -> FastAPI:
     api_router = APIRouter(prefix=settings.api_prefix)
     api_router.include_router(meta_router)
     api_router.include_router(complaints_router)
+    api_router.include_router(stats_router)
     app.include_router(api_router)
 
     return app

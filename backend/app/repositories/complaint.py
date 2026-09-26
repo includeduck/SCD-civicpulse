@@ -138,35 +138,39 @@ async def update_status(
 
 
 async def stats_by_category(session: AsyncSession) -> list[dict[str, Any]]:
-    """Return complaint counts grouped by category."""
+    """Return complaint counts grouped by category.
+
+    The aggregate is labelled "total", not "count": ``row.count`` would collide
+    with the ``Row.count()`` sequence method.
+    """
     stmt = (
-        select(Complaint.category, func.count().label("count"))
+        select(Complaint.category, func.count().label("total"))
         .group_by(Complaint.category)
         .order_by(Complaint.category)
     )
     result = await session.execute(stmt)
-    return [{"category": row.category, "count": row.count} for row in result]
+    return [{"category": row.category, "count": row.total} for row in result]
 
 
 async def stats_by_priority(session: AsyncSession) -> list[dict[str, Any]]:
     """Return complaint counts grouped by priority."""
     stmt = (
-        select(Complaint.priority, func.count().label("count"))
+        select(Complaint.priority, func.count().label("total"))
         .group_by(Complaint.priority)
         .order_by(Complaint.priority)
     )
     result = await session.execute(stmt)
-    return [{"priority": row.priority, "count": row.count} for row in result]
+    return [{"priority": row.priority, "count": row.total} for row in result]
 
 
 async def stats_by_status(session: AsyncSession) -> dict[str, int]:
     """Return complaint counts keyed by status string."""
     stmt = (
-        select(Complaint.status, func.count().label("count"))
+        select(Complaint.status, func.count().label("total"))
         .group_by(Complaint.status)
     )
     result = await session.execute(stmt)
-    return {row.status: row.count for row in result}
+    return {row.status: row.total for row in result}
 
 
 async def recent_triage_outcomes(

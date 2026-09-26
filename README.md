@@ -65,9 +65,17 @@ python -m scripts.seed_db
 # Run the API with hot reload
 uvicorn app.main:app --reload
 
-# Lint and test (coverage report included)
+# Lint, type-check and test (coverage report included)
 ruff check .
+mypy app
 pytest
+```
+
+PostgreSQL-specific tests (migrations, CHECK constraints, seed idempotency) are skipped unless `TEST_DATABASE_URL` points at a disposable database:
+
+```bash
+docker run -d --rm --name civicpulse-pg-test -e POSTGRES_USER=civicpulse -e POSTGRES_PASSWORD=civicpulse -e POSTGRES_DB=civicpulse_test -p 55432:5432 postgres:16-alpine
+TEST_DATABASE_URL=postgresql+asyncpg://civicpulse:civicpulse@localhost:55432/civicpulse_test pytest tests/test_postgres.py
 ```
 
 The backend follows a 4-layer architecture: **routes → services → repositories → models**, with AI triage behind a provider interface in `app/providers/triage/`.
@@ -81,8 +89,9 @@ The backend follows a 4-layer architecture: **routes → services → repositori
 | 0 | Repository and team workflow | ✅ Done |
 | 1 | Backend foundation (FastAPI, config, logging, health probes) | ✅ Done |
 | 2 | Database models, Alembic migrations, repositories, seed | ✅ Done |
-| 3 | Complaint domain and API | ⏳ Next |
-| 4–7 | Triage providers, Redis cache/rate limiting, observability | 🔜 Planned |
+| 3 | Complaint domain and API, rule-based triage | ✅ Done |
+| 4 | Simulated triage provider and provider factory | ⏳ Next |
+| 5–7 | LLM/Ollama providers, Redis cache/rate limiting, observability | 🔜 Planned |
 | 8–9 | Frontend, Docker Compose | 🔜 Planned |
 | 10–15 | Tests, Kubernetes, CI/CD, documentation | 🔜 Planned |
 
@@ -94,17 +103,17 @@ See [CivicPulse_ImplementationPlan.md](CivicPulse_ImplementationPlan.md) for the
 
 | Method | Path | Description | Status |
 |--------|------|-------------|--------|
-| `POST` | `/api/complaints` | Submit a new complaint (rate-limited, AI-triaged) | Phase 3 |
-| `GET` | `/api/complaints` | List complaints (filterable, paginated) | Phase 3 |
-| `GET` | `/api/complaints/{id}` | Get a single complaint | Phase 3 |
-| `PATCH` | `/api/complaints/{id}/status` | Transition complaint status | Phase 3 |
-| `GET` | `/api/stats` | Aggregate stats (Redis-cached, 30 s TTL) | Phase 3/6 |
-| `GET` | `/api/meta/providers` | Triage provider info and metrics | ✅ |
+| `POST` | `/api/complaints` | Submit a new complaint (rate-limited, AI-triaged) | ✅ |
+| `GET` | `/api/complaints` | List complaints (filterable, paginated) | ✅ |
+| `GET` | `/api/complaints/{id}` | Get a single complaint | ✅ |
+| `PATCH` | `/api/complaints/{id}/status` | Transition complaint status | ✅ |
+| `GET` | `/api/stats` | Aggregate stats with `X-Cache` header (Redis caching lands in Phase 6) | ✅ |
+| `GET` | `/api/meta/providers` | Active triage provider and the last 20 triage outcomes | ✅ |
 | `GET` | `/health` | Liveness probe (no DB) | ✅ |
 | `GET` | `/ready` | Readiness probe (checks PG + Redis) | ✅ |
 | `GET` | `/metrics` | Prometheus metrics | ✅ |
 
-Invalid input returns `400` with field-level errors; invalid status transitions return `409`; rate-limited requests return `429` with `Retry-After`.
+Invalid input returns `400` with field-level errors. Invalid status transitions return `409` naming the transition, e.g. `Cannot transition complaint from 'resolved' to 'open'.` Every complaint response includes `allowed_transitions`, so clients never hardcode the state machine. Rate-limited requests will return `429` with `Retry-After` (Phase 6).
 
 ---
 

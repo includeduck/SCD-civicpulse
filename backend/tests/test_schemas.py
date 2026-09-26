@@ -65,6 +65,7 @@ def test_complaint_response_from_attributes():
         triage_latency_ms=120,
         created_at=now,
         updated_at=now,
+        allowed_transitions=["in_progress", "rejected"],
     )
     assert res.id == cid
     assert res.category == Category.water
@@ -89,6 +90,7 @@ def test_complaint_response_never_exposes_reporter_contact():
         triage_latency_ms=5,
         created_at=now,
         updated_at=now,
+        allowed_transitions=[],
     )
     dumped = ComplaintResponse.model_validate(orm_like).model_dump()
     assert "reporter_contact" not in dumped
@@ -110,6 +112,7 @@ def test_complaint_response_rejects_unknown_enum_values():
             triage_latency_ms=None,
             created_at=now,
             updated_at=now,
+            allowed_transitions=[],
         )
 
 

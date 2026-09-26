@@ -43,14 +43,14 @@ class Settings(BaseSettings):
     )
 
     # ── Database ───────────────────────────────────────────────────
-    database_url: PostgresDsn = Field(
+    database_url: PostgresDsn = Field(  # type: ignore[assignment]  # str default is validated
         default="postgresql+asyncpg://civicpulse:civicpulse@localhost:5432/civicpulse"
     )
     database_pool_size: int = 10
     database_max_overflow: int = 20
 
     # ── Redis ──────────────────────────────────────────────────────
-    redis_url: RedisDsn = Field(default="redis://localhost:6379/0")
+    redis_url: RedisDsn = Field(default="redis://localhost:6379/0")  # type: ignore[assignment]
     redis_stats_ttl: int = 30           # seconds, per §1.3
     redis_ai_cache_ttl: int = 86400     # 24 hours, per §1.4
 

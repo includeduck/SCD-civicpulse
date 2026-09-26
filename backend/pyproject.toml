@@ -59,8 +59,12 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 addopts = "--cov=app --cov-report=term-missing -q"
 
 [tool.coverage.run]
+# SQLAlchemy async runs code in greenlets and providers run in a threadpool;
+# without this, lines that do execute are reported as missed.
+concurrency = ["greenlet", "thread"]
 omit = ["tests/*", "alembic/*"]

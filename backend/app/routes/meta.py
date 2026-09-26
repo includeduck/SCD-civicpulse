@@ -1,73 +1,17 @@
-"""Metadata and system introspection endpoints."""
+"""GET /api/meta/providers — active triage provider and recent triage outcomes."""
 
 from __future__ import annotations
 
 from fastapi import APIRouter
-from pydantic import BaseModel
 
-from app.core.config import get_settings
+from app.core.dependencies import MetaServiceDep
+from app.schemas.meta import ProvidersResponse
 
 router = APIRouter(prefix="/meta", tags=["Metadata"])
 
 
-class ProviderMeta(BaseModel):
-    name: str  # TRIAGE_PROVIDER value that selects this provider
-    triaged_by: str  # label recorded on complaints triaged by this provider
-    active: bool
-    timeout_seconds: int
-    fallback_provider: str | None = None
-    description: str
-
-
-class ProvidersResponse(BaseModel):
-    active_provider: str
-    providers: list[ProviderMeta]
-
-
 @router.get("/providers", response_model=ProvidersResponse, summary="List AI Triage Providers")
-async def get_providers() -> ProvidersResponse:
-    """Return available and currently active AI triage providers.
-
-    Surfaces provider status, timeout configuration, and fallback mechanisms.
-    """
-    settings = get_settings()
-
-    all_providers = [
-        ProviderMeta(
-            name="simulated",
-            triaged_by="simulated",
-            active=(settings.triage_provider == "simulated"),
-            timeout_seconds=settings.triage_timeout_seconds,
-            fallback_provider="rules",
-            description="Deterministic simulated provider for CI and testing",
-        ),
-        ProviderMeta(
-            name="rules",
-            triaged_by="rules",
-            active=(settings.triage_provider == "rules"),
-            timeout_seconds=settings.triage_timeout_seconds,
-            fallback_provider=None,
-            description="Heuristic keyword/rules-based triage engine",
-        ),
-        ProviderMeta(
-            name="llm",
-            triaged_by="llm:groq",
-            active=(settings.triage_provider == "llm"),
-            timeout_seconds=settings.triage_timeout_seconds,
-            fallback_provider="rules:fallback",
-            description="Hosted Groq Cloud LLM triage provider with retry and fallback",
-        ),
-        ProviderMeta(
-            name="ollama",
-            triaged_by="llm:ollama",
-            active=(settings.triage_provider == "ollama"),
-            timeout_seconds=settings.triage_timeout_seconds,
-            fallback_provider="rules:fallback",
-            description="Local Ollama LLM provider running on municipal edge host",
-        ),
-    ]
-
-    return ProvidersResponse(
-        active_provider=settings.triage_provider,
-        providers=all_providers,
-    )
+async def get_providers(service: MetaServiceDep) -> ProvidersResponse:
+    """Active provider, all known providers, and the last 20 triage outcomes
+    (provider, latency, fallback y/n)."""
+    return await service.providers()
