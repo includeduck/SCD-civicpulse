@@ -34,8 +34,8 @@ def test_create_complaint_triages_and_persists(client: TestClient):
     assert body["category"] == "water"
     assert body["priority"] == "high"
     assert body["status"] == "open"
-    assert body["triaged_by"] == "rules"
-    assert body["ai_summary"]
+    assert body["triaged_by"] == "simulated"  # CI runs SimulatedTriage (assignment §2.5)
+    assert body["ai_summary"].startswith("[simulated] ")
     assert isinstance(body["triage_latency_ms"], int)
     assert body["allowed_transitions"] == ["in_progress", "rejected"]
     uuid.UUID(body["id"])

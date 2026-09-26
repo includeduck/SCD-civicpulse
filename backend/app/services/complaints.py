@@ -6,6 +6,7 @@ import math
 import time
 import uuid
 
+from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
@@ -14,7 +15,7 @@ from app.core.logging import get_logger
 from app.models.complaint import Category, Priority, Status
 from app.providers.cache import StatsCache
 from app.providers.rate_limit import RateLimiter
-from app.providers.triage.base import TriageProvider, TriageResult
+from app.providers.triage.base import TriageInvalidOutputError, TriageProvider, TriageResult
 from app.repositories import complaint as complaint_repo
 from app.schemas.complaint import ComplaintCreate, ComplaintListResponse, ComplaintResponse
 from app.services.status import to_response
@@ -73,7 +74,14 @@ class ComplaintService:
         result = await run_in_threadpool(self._triage.triage, text, location)
         latency_ms = round((time.perf_counter() - started) * 1000)
         # Re-validate: providers are untrusted, whatever they claim to return.
-        return TriageResult.model_validate(result.model_dump()), latency_ms
+        # Bad provider output is a provider failure, never the citizen's 400.
+        try:
+            validated = TriageResult.model_validate(result.model_dump())
+        except ValidationError as exc:
+            raise TriageInvalidOutputError(
+                f"{self._triage.name} returned invalid output: {exc.error_count()} error(s)"
+            ) from exc
+        return validated, latency_ms
 
     async def get(self, complaint_id: uuid.UUID) -> ComplaintResponse:
         complaint = await complaint_repo.get_complaint(self._session, complaint_id)

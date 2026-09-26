@@ -12,14 +12,13 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator
 from typing import Annotated
 
-from fastapi import Depends
+from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.config import Settings, get_settings
 from app.providers.cache import NoOpStatsCache, StatsCache
 from app.providers.rate_limit import AllowAllRateLimiter, RateLimiter
 from app.providers.triage.base import TriageProvider
-from app.providers.triage.rules import RuleBasedTriage
 from app.services.complaints import ComplaintService
 from app.services.meta import MetaService
 from app.services.stats import StatsService
@@ -85,15 +84,15 @@ DbSession = Annotated[AsyncSession, Depends(get_db)]
 # Wiring lives here so routes only ever receive ready-made services. Tests swap
 # any of these via app.dependency_overrides.
 
-# Phase 3 placeholders: Phase 4 replaces the triage provider with the factory,
-# Phase 6 replaces the cache and limiter with Redis implementations.
-_triage_provider = RuleBasedTriage()
+# Phase 6 replaces these placeholders with Redis implementations.
 _stats_cache = NoOpStatsCache()
 _rate_limiter = AllowAllRateLimiter()
 
 
-def get_triage_provider() -> TriageProvider:
-    return _triage_provider
+def get_triage_provider(request: Request) -> TriageProvider:
+    """The provider built once by the factory in ``create_app``."""
+    provider: TriageProvider = request.app.state.triage_provider
+    return provider
 
 
 def get_stats_cache() -> StatsCache:

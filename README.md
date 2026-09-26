@@ -90,8 +90,9 @@ The backend follows a 4-layer architecture: **routes → services → repositori
 | 1 | Backend foundation (FastAPI, config, logging, health probes) | ✅ Done |
 | 2 | Database models, Alembic migrations, repositories, seed | ✅ Done |
 | 3 | Complaint domain and API, rule-based triage | ✅ Done |
-| 4 | Simulated triage provider and provider factory | ⏳ Next |
-| 5–7 | LLM/Ollama providers, Redis cache/rate limiting, observability | 🔜 Planned |
+| 4 | Simulated triage provider and provider factory | ✅ Done |
+| 5 | LLM/Ollama providers, retry, fallback, AI cache | ⏳ Next |
+| 6–7 | Redis stats cache/rate limiting, observability | 🔜 Planned |
 | 8–9 | Frontend, Docker Compose | 🔜 Planned |
 | 10–15 | Tests, Kubernetes, CI/CD, documentation | 🔜 Planned |
 

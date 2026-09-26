@@ -29,6 +29,7 @@ from app.core.exceptions import (
 )
 from app.core.logging import configure_logging, get_logger
 from app.core.middleware import RequestIDMiddleware
+from app.providers.triage.factory import build_triage_provider
 from app.routes.complaints import router as complaints_router
 from app.routes.health import router as health_router
 from app.routes.meta import router as meta_router
@@ -76,6 +77,9 @@ def create_app() -> FastAPI:
         openapi_url="/openapi.json",
         lifespan=lifespan,
     )
+
+    # Built here, not per request: an invalid TRIAGE_PROVIDER fails at startup.
+    app.state.triage_provider = build_triage_provider(settings)
 
     # ── Exception Handlers ──────────────────────────────────────────
     app.add_exception_handler(CivicPulseError, civicpulse_error_handler)  # type: ignore[arg-type]

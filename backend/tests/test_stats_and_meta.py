@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 
 from app.core.dependencies import get_stats_cache
 from app.models.complaint import TriagedBy
-from app.providers.triage.rules import RuleBasedTriage
+from app.providers.triage.simulated import SimulatedTriage
 
 WATER = {"text": "Pipe burst ho gaya hai, paani sarak par beh raha hai", "location": "F-8"}
 ROADS = {"text": "Minor pothole on the service road near the market", "location": "G-9"}
@@ -106,7 +106,7 @@ def test_meta_reports_recent_triage_outcomes(client: TestClient):
     outcomes = body["recent_outcomes"]
     assert len(outcomes) == 3
     for outcome in outcomes:
-        assert outcome["provider"] == RuleBasedTriage.name
+        assert outcome["provider"] == SimulatedTriage.name
         assert outcome["fallback"] is False
         assert isinstance(outcome["latency_ms"], int)
 
