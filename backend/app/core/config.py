@@ -17,7 +17,8 @@ class Settings(BaseSettings):
     """Application-wide settings loaded from environment variables."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        # Repo-root .env when running from backend/, or a local one.
+        env_file=("../.env", ".env"),
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
@@ -29,11 +30,16 @@ class Settings(BaseSettings):
     environment: Literal["development", "production", "test"] = "development"
     debug: bool = False
     log_level: str = "INFO"
+    # JSON is required on stdout (plan §1.1); "console" is a local-only convenience.
+    log_format: Literal["json", "console"] = "json"
 
     # ── API ────────────────────────────────────────────────────────
     api_prefix: str = "/api"
-    allowed_origins: list[str] = Field(
-        default=["http://localhost:3000", "http://localhost:5173"]
+    # Read as a plain string: pydantic-settings JSON-decodes list fields from env,
+    # which rejects the comma-separated form used in .env.example.
+    allowed_origins_csv: str = Field(
+        default="http://localhost:3000,http://localhost:5173",
+        validation_alias="ALLOWED_ORIGINS",
     )
 
     # ── Database ───────────────────────────────────────────────────
@@ -53,11 +59,18 @@ class Settings(BaseSettings):
     rate_limit_window: int = 60         # seconds
 
     # ── Triage ────────────────────────────────────────────────────
-    triage_provider: Literal["llm:groq", "llm:ollama", "rules", "simulated"] = "simulated"
+    # Values follow plan §9 (factory). Provider *labels* stored in
+    # complaints.triaged_by (e.g. "llm:groq") are a separate vocabulary.
+    triage_provider: Literal["llm", "ollama", "rules", "simulated"] = "simulated"
     triage_timeout_seconds: int = 10
     groq_api_key: str = ""
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "llama3.2"
+
+    @property
+    def allowed_origins(self) -> list[str]:
+        """Comma-separated ALLOWED_ORIGINS as a list."""
+        return [o.strip() for o in self.allowed_origins_csv.split(",") if o.strip()]
 
     @field_validator("log_level")
     @classmethod

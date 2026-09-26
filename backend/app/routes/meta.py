@@ -11,7 +11,8 @@ router = APIRouter(prefix="/meta", tags=["Metadata"])
 
 
 class ProviderMeta(BaseModel):
-    name: str
+    name: str  # TRIAGE_PROVIDER value that selects this provider
+    triaged_by: str  # label recorded on complaints triaged by this provider
     active: bool
     timeout_seconds: int
     fallback_provider: str | None = None
@@ -34,6 +35,7 @@ async def get_providers() -> ProvidersResponse:
     all_providers = [
         ProviderMeta(
             name="simulated",
+            triaged_by="simulated",
             active=(settings.triage_provider == "simulated"),
             timeout_seconds=settings.triage_timeout_seconds,
             fallback_provider="rules",
@@ -41,21 +43,24 @@ async def get_providers() -> ProvidersResponse:
         ),
         ProviderMeta(
             name="rules",
+            triaged_by="rules",
             active=(settings.triage_provider == "rules"),
             timeout_seconds=settings.triage_timeout_seconds,
             fallback_provider=None,
             description="Heuristic keyword/rules-based triage engine",
         ),
         ProviderMeta(
-            name="llm:groq",
-            active=(settings.triage_provider == "llm:groq"),
+            name="llm",
+            triaged_by="llm:groq",
+            active=(settings.triage_provider == "llm"),
             timeout_seconds=settings.triage_timeout_seconds,
             fallback_provider="rules:fallback",
             description="Hosted Groq Cloud LLM triage provider with retry and fallback",
         ),
         ProviderMeta(
-            name="llm:ollama",
-            active=(settings.triage_provider == "llm:ollama"),
+            name="ollama",
+            triaged_by="llm:ollama",
+            active=(settings.triage_provider == "ollama"),
             timeout_seconds=settings.triage_timeout_seconds,
             fallback_provider="rules:fallback",
             description="Local Ollama LLM provider running on municipal edge host",

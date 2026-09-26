@@ -33,6 +33,8 @@ def seed_uuid(seed_key: str) -> uuid.UUID:
 
 
 # ── Seed data: >=30 realistic Urdu-influenced English complaints ──────────────
+# triaged_by uses only production labels (plan §1.2). "simulated" is reserved
+# for SimulatedTriage in CI/tests and must not appear in seeded demo data.
 
 COMPLAINTS = [
     {
@@ -43,7 +45,7 @@ COMPLAINTS = [
         "priority": "high",
         "status": "open",
         "ai_summary": "Water supply disrupted for 3 days, pump failure in Gulberg III.",
-        "triaged_by": "simulated",
+        "triaged_by": "rules",
         "triage_latency_ms": 320,
     },
     {
@@ -54,7 +56,7 @@ COMPLAINTS = [
         "priority": "high",
         "status": "in_progress",
         "ai_summary": "Transformer failure causing electricity outage in Model Town Block E.",
-        "triaged_by": "simulated",
+        "triaged_by": "rules",
         "triage_latency_ms": 410,
     },
     {
@@ -65,7 +67,7 @@ COMPLAINTS = [
         "priority": "high",
         "status": "open",
         "ai_summary": "Sewage overflow on road for a month in Johar Town Sector B.",
-        "triaged_by": "simulated",
+        "triaged_by": "rules",
         "triage_latency_ms": 290,
     },
     {
@@ -76,7 +78,7 @@ COMPLAINTS = [
         "priority": "high",
         "status": "resolved",
         "ai_summary": "Large potholes causing vehicle damage and accidents on Ferozepur Road.",
-        "triaged_by": "simulated",
+        "triaged_by": "rules",
         "triage_latency_ms": 370,
     },
     {
@@ -87,7 +89,7 @@ COMPLAINTS = [
         "priority": "normal",
         "status": "open",
         "ai_summary": "Street lights out in DHA Phase 4, safety concern at night.",
-        "triaged_by": "simulated",
+        "triaged_by": "rules",
         "triage_latency_ms": 180,
     },
     {
@@ -98,7 +100,7 @@ COMPLAINTS = [
         "priority": "normal",
         "status": "open",
         "ai_summary": "Low water pressure prevents supply to upper floors in Iqbal Town.",
-        "triaged_by": "simulated",
+        "triaged_by": "rules",
         "triage_latency_ms": 250,
     },
     {
@@ -109,7 +111,7 @@ COMPLAINTS = [
         "priority": "normal",
         "status": "rejected",
         "ai_summary": "Unscheduled 8-hour power outage reported in Garden Town.",
-        "triaged_by": "simulated",
+        "triaged_by": "rules",
         "triage_latency_ms": 330,
     },
     {
@@ -120,7 +122,7 @@ COMPLAINTS = [
         "priority": "low",
         "status": "open",
         "ai_summary": "No waste bin in Shadman Colony, residents dumping garbage on roadside.",
-        "triaged_by": "simulated",
+        "triaged_by": "rules",
         "triage_latency_ms": 210,
     },
     {
@@ -131,7 +133,7 @@ COMPLAINTS = [
         "priority": "normal",
         "status": "in_progress",
         "ai_summary": "Incomplete road construction causing water logging in Cavalry Ground.",
-        "triaged_by": "simulated",
+        "triaged_by": "rules",
         "triage_latency_ms": 440,
     },
     {
@@ -142,7 +144,7 @@ COMPLAINTS = [
         "priority": "normal",
         "status": "open",
         "ai_summary": "Only 2 of several street lights functional in Gulshan-e-Ravi Block A.",
-        "triaged_by": "simulated",
+        "triaged_by": "rules",
         "triage_latency_ms": 195,
     },
     {
@@ -208,7 +210,7 @@ COMPLAINTS = [
         "priority": "normal",
         "status": "resolved",
         "ai_summary": "Main water pipe leak on Racecourse Road, significant water wastage.",
-        "triaged_by": "simulated",
+        "triaged_by": "rules",
         "triage_latency_ms": 300,
     },
     {
@@ -219,7 +221,7 @@ COMPLAINTS = [
         "priority": "high",
         "status": "in_progress",
         "ai_summary": "Exposed live wiring on electricity pole in Wahdat Colony, child safety risk.",
-        "triaged_by": "simulated",
+        "triaged_by": "rules",
         "triage_latency_ms": 380,
     },
     {
@@ -230,7 +232,7 @@ COMPLAINTS = [
         "priority": "high",
         "status": "open",
         "ai_summary": "Blocked drain causing household flooding in Sabzazar Scheme Block R.",
-        "triaged_by": "simulated",
+        "triaged_by": "rules",
         "triage_latency_ms": 290,
     },
     {
@@ -241,7 +243,7 @@ COMPLAINTS = [
         "priority": "high",
         "status": "open",
         "ai_summary": "Damaged road divider near Lahore Museum causing wrong-way driving.",
-        "triaged_by": "simulated",
+        "triaged_by": "rules",
         "triage_latency_ms": 420,
     },
     {
@@ -252,7 +254,7 @@ COMPLAINTS = [
         "priority": "high",
         "status": "open",
         "ai_summary": "No lighting in Jinnah Park at night, women afraid to use park.",
-        "triaged_by": "simulated",
+        "triaged_by": "rules",
         "triage_latency_ms": 275,
     },
     {
@@ -285,7 +287,7 @@ COMPLAINTS = [
         "priority": "normal",
         "status": "open",
         "ai_summary": "Street sweeper absent from Badami Bagh Street 7, duration unknown.",
-        "triaged_by": "simulated",
+        "triaged_by": "rules",
         "triage_latency_ms": 210,
     },
     {
@@ -296,7 +298,7 @@ COMPLAINTS = [
         "priority": "high",
         "status": "open",
         "ai_summary": "Broken bridge railing on Shahdara Bridge left side, motorcycle hazard.",
-        "triaged_by": "simulated",
+        "triaged_by": "rules",
         "triage_latency_ms": 345,
     },
     {
@@ -307,7 +309,7 @@ COMPLAINTS = [
         "priority": "low",
         "status": "rejected",
         "ai_summary": "Damaged community notice board in Cavalry Ground Sector 4.",
-        "triaged_by": "simulated",
+        "triaged_by": "rules",
         "triage_latency_ms": 165,
     },
     {
@@ -318,7 +320,7 @@ COMPLAINTS = [
         "priority": "normal",
         "status": "in_progress",
         "ai_summary": "Overflowing water tank near Manga Mandi Water Tower wasting supply.",
-        "triaged_by": "simulated",
+        "triaged_by": "rules",
         "triage_latency_ms": 280,
     },
     {
@@ -329,7 +331,7 @@ COMPLAINTS = [
         "priority": "normal",
         "status": "open",
         "ai_summary": "Voltage fluctuations damaging home appliances in Gulshan-e-Iqbal Block 9.",
-        "triaged_by": "simulated",
+        "triaged_by": "rules",
         "triage_latency_ms": 310,
     },
     {
@@ -340,7 +342,7 @@ COMPLAINTS = [
         "priority": "high",
         "status": "open",
         "ai_summary": "Storm drain not cleaned this year, flood risk for entire neighborhood.",
-        "triaged_by": "simulated",
+        "triaged_by": "rules",
         "triage_latency_ms": 395,
     },
     {
@@ -351,7 +353,7 @@ COMPLAINTS = [
         "priority": "normal",
         "status": "open",
         "ai_summary": "Faded road markings causing traffic confusion at Allama Iqbal Road intersection.",
-        "triaged_by": "simulated",
+        "triaged_by": "rules",
         "triage_latency_ms": 255,
     },
     {
@@ -362,7 +364,7 @@ COMPLAINTS = [
         "priority": "low",
         "status": "resolved",
         "ai_summary": "Street lights not turning off during daytime in Anarkali Bazaar area.",
-        "triaged_by": "simulated",
+        "triaged_by": "rules",
         "triage_latency_ms": 170,
     },
     {
@@ -373,7 +375,7 @@ COMPLAINTS = [
         "priority": "normal",
         "status": "open",
         "ai_summary": "Public toilet closed in Lawrence Garden, no maintenance staff present.",
-        "triaged_by": "simulated",
+        "triaged_by": "rules",
         "triage_latency_ms": 230,
     },
     {
@@ -384,7 +386,7 @@ COMPLAINTS = [
         "priority": "high",
         "status": "open",
         "ai_summary": "Borehole water contaminated in Green Town, no alternative municipal supply.",
-        "triaged_by": "simulated",
+        "triaged_by": "rules",
         "triage_latency_ms": 360,
     },
 ]

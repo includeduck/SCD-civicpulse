@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from app.models.complaint import Status
+from app.models.complaint import Category, Priority, Status
 from app.schemas.complaint import (
     CategoryCount,
     ComplaintCreate,
@@ -57,7 +57,6 @@ def test_complaint_response_from_attributes():
         id=cid,
         text="Valid text description of issue",
         location="Some location",
-        reporter_contact=None,
         category="water",
         priority="high",
         status="open",
@@ -68,8 +67,50 @@ def test_complaint_response_from_attributes():
         updated_at=now,
     )
     assert res.id == cid
-    assert res.category == "water"
-    assert res.priority == "high"
+    assert res.category == Category.water
+    assert res.priority == Priority.high
+
+
+def test_complaint_response_never_exposes_reporter_contact():
+    """Contact details are PII and must not leak through the unauthenticated API."""
+    from types import SimpleNamespace
+
+    now = datetime.now(UTC)
+    orm_like = SimpleNamespace(
+        id=uuid.uuid4(),
+        text="Valid text description of issue",
+        location="Some location",
+        reporter_contact="03001234567",
+        category="water",
+        priority="high",
+        status="open",
+        ai_summary=None,
+        triaged_by="rules",
+        triage_latency_ms=5,
+        created_at=now,
+        updated_at=now,
+    )
+    dumped = ComplaintResponse.model_validate(orm_like).model_dump()
+    assert "reporter_contact" not in dumped
+    assert "reporter_contact" not in ComplaintResponse.model_json_schema()["properties"]
+
+
+def test_complaint_response_rejects_unknown_enum_values():
+    now = datetime.now(UTC)
+    with pytest.raises(ValidationError):
+        ComplaintResponse(
+            id=uuid.uuid4(),
+            text="Valid text description of issue",
+            location="Some location",
+            category="banana",
+            priority="high",
+            status="open",
+            ai_summary=None,
+            triaged_by=None,
+            triage_latency_ms=None,
+            created_at=now,
+            updated_at=now,
+        )
 
 
 def test_status_update_request():

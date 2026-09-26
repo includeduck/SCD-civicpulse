@@ -9,6 +9,7 @@ Contracts:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -21,6 +22,9 @@ from app.core.config import get_settings
 from app.core.dependencies import _get_session_factory
 
 logger = logging.getLogger(__name__)
+
+# Each dependency check must finish well inside the Kubernetes probe timeout.
+READINESS_CHECK_TIMEOUT_SECONDS = 2.0
 
 router = APIRouter(tags=["Health & Diagnostics"])
 
@@ -58,6 +62,8 @@ async def ready() -> JSONResponse:
 
     Returns 200 if all dependencies are healthy.
     Returns 503 naming the specific failed dependency if any check fails.
+    Only the exception class is returned; full errors go to the logs, since
+    driver messages can include hostnames, usernames or DSN fragments.
     """
     settings = get_settings()
     checks: dict[str, dict[str, Any]] = {}
@@ -67,24 +73,32 @@ async def ready() -> JSONResponse:
     try:
         factory = _get_session_factory()
         async with factory() as session:
-            await session.execute(text("SELECT 1"))
+            await asyncio.wait_for(
+                session.execute(text("SELECT 1")), READINESS_CHECK_TIMEOUT_SECONDS
+            )
         checks["database"] = {"status": "ok"}
     except Exception as exc:
         is_ready = False
-        checks["database"] = {"status": "failed", "error": str(exc)}
+        checks["database"] = {"status": "failed", "error": type(exc).__name__}
         logger.warning("Readiness probe: database check failed", exc_info=exc)
 
     # 2. Check Redis
     try:
         import redis.asyncio as aioredis  # type: ignore
 
-        r = aioredis.from_url(str(settings.redis_url), socket_timeout=2.0)
-        await r.ping()
-        await r.aclose()
+        r = aioredis.from_url(
+            str(settings.redis_url),
+            socket_timeout=READINESS_CHECK_TIMEOUT_SECONDS,
+            socket_connect_timeout=READINESS_CHECK_TIMEOUT_SECONDS,
+        )
+        try:
+            await r.ping()
+        finally:
+            await r.aclose()
         checks["redis"] = {"status": "ok"}
     except Exception as exc:
         is_ready = False
-        checks["redis"] = {"status": "failed", "error": str(exc)}
+        checks["redis"] = {"status": "failed", "error": type(exc).__name__}
         logger.warning("Readiness probe: redis check failed", exc_info=exc)
 
     payload = {

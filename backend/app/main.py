@@ -40,7 +40,7 @@ logger = get_logger(__name__)
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan context manager."""
     settings = get_settings()
-    configure_logging(log_level=settings.log_level, environment=settings.environment)
+    configure_logging(log_level=settings.log_level, log_format=settings.log_format)
 
     logger.info(
         "Application starting up",

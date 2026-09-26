@@ -13,7 +13,7 @@ Query → Index mapping:
 from __future__ import annotations
 
 import uuid
-from datetime import UTC
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import func, select, update
@@ -75,7 +75,8 @@ async def list_complaints(
     Served by idx_complaint_status_priority (when filtering on status+priority)
     and idx_complaint_created_at (ordering).
     """
-    stmt = select(Complaint).order_by(Complaint.created_at.desc())
+    # id is a tie-breaker so rows sharing a created_at never shift between pages.
+    stmt = select(Complaint).order_by(Complaint.created_at.desc(), Complaint.id.desc())
 
     if category is not None:
         stmt = stmt.where(Complaint.category == category)
@@ -116,13 +117,19 @@ async def update_status(
     session: AsyncSession,
     complaint_id: uuid.UUID,
     new_status: str,
+    *,
+    expected_status: str,
 ) -> Complaint | None:
-    """Update complaint status and return the refreshed object, or None if not found."""
-    from datetime import datetime
+    """Atomically move a complaint from ``expected_status`` to ``new_status``.
 
+    The WHERE clause includes the expected current status (compare-and-set), so
+    two concurrent transitions cannot both succeed. Returns the updated complaint,
+    or None if the complaint does not exist *or* its status is no longer
+    ``expected_status``; the caller re-reads to tell 404 from 409.
+    """
     stmt = (
         update(Complaint)
-        .where(Complaint.id == complaint_id)
+        .where(Complaint.id == complaint_id, Complaint.status == expected_status)
         .values(status=new_status, updated_at=datetime.now(UTC))
         .returning(Complaint)
     )

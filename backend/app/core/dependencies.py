@@ -52,17 +52,19 @@ def _get_session_factory() -> async_sessionmaker[AsyncSession]:
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """FastAPI dependency that yields an async DB session.
 
-    The session is committed on success and rolled back on exception,
-    then closed regardless. Routes must not manage transactions themselves.
+    The session is NOT committed here. FastAPI runs the code after ``yield``
+    once the response has been sent, so a commit here could fail after the
+    client already received 201. Services own the unit of work: they call
+    ``await session.commit()`` before returning, then perform post-commit side
+    effects (e.g. cache invalidation). Anything left uncommitted is rolled back.
+    Routes must not manage transactions themselves.
     """
     factory = _get_session_factory()
     async with factory() as session:
         try:
             yield session
-            await session.commit()
-        except Exception:
+        finally:
             await session.rollback()
-            raise
 
 
 # ── Typed dependency aliases ────────────────────────────────────────────────
