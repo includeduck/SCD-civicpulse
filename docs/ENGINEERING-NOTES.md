@@ -2,57 +2,104 @@
 
 > **CS4032 Software Construction and Design — Assignment 01**
 >
-> This document answers all 8 assignment engineering questions with exact file and line references.
-> It is a living document — sections marked *TODO* will be completed as each phase is implemented.
+> Part 1 answers the **eight questions in assignment §5.2**, in the assignment's own order and wording. Part 2 holds the other written justifications the assignment requires (indexes, cache TTL and invalidation, the Redis volume, the dev bind mount).
+>
+> Every answer cites our own files and lines, because "generic answers score zero". **Line numbers drift as code changes: re-check every reference before submission.** Sections marked *TODO* depend on phases that aren't built yet.
 
 ---
 
-## Q1 — How does the four-layer backend architecture enforce separation of concerns?
+# Part 1 — The eight questions (assignment §5.2)
 
-*TODO: Answer with file + line references after Phase 1.*
+## Q1 — Three things that differ between your laptop and a CI runner, and the exact line in a Dockerfile or manifest that freezes each
 
----
-
-## Q2 — How does the rate limiter work correctly across multiple backend replicas?
-
-*TODO: Answer with file + line references after Phase 6.*
+*TODO (Phases 9 and 13): answer from the final `backend/Dockerfile`, `frontend/Dockerfile` and `.github/workflows/ci.yml`. Candidates we have already met: the Python version (the laptop had Python 3.14 while the project targets 3.12, so the `python:3.12-slim` base line freezes it); dependency versions (the laptop venv had FastAPI 0.141 against the pinned 0.115.6, so the `==` pins in `backend/pyproject.toml` freeze them); and the triage provider (a laptop may use Groq, while CI pins `TRIAGE_PROVIDER=simulated`).*
 
 ---
 
-## Q3 — Why is Redis AOF enabled, and what does it protect against?
+## Q2 — Where your pipeline sits on the CI/CD maturity ladder (Lecture 03, slide 32); justify the rung, name the next rung and what it buys
 
-*TODO: Answer after Phase 6.*
-
-Redis AOF (Append-Only File) persistence is enabled to survive container restarts without losing the distributed rate-limit state and stats-cache keys.
-
-**Justification:** Without AOF, a Redis restart resets all rate-limit windows, allowing a burst of requests immediately after recovery. With AOF, the windows survive and the rate-limit guarantee holds across restarts.
+*TODO (Phases 13–14).*
 
 ---
 
-## Q4 — How is the AI triage fallback implemented and tested?
+## Q3 — The exact line guaranteeing build-once-deploy-many, and what breaks without it
 
-*TODO: Answer with file + line references after Phase 4–5.*
-
----
-
-## Q5 — How does the frontend avoid baking the backend URL into the build?
-
-*TODO: Answer with file + line references after Phase 8.*
+*TODO (Phases 8, 14): the frontend runtime-configuration line (ADR 0002) and the deploy-by-SHA image reference (ADR 0003).*
 
 ---
 
-## Q6 — How does the Compose network topology enforce the security constraint?
+## Q4 — With a live LLM provider the service is probabilistic. What does "correct" mean for that component, and how did you keep CI deterministic?
 
-*TODO: Answer with evidence command after Phase 9.*
+**What "correct" means.** We don't define correct as "the model picked the category a human would". We can't guarantee that, and no test could check it. For the triage component, correct means four properties that hold for *every* request, whatever the model does:
+
+1. **Every stored result satisfies the schema.** Category and priority are enum members, the summary is at most 140 characters, and confidence is between 0 and 1. Model output is parsed strictly and validated against `TriageResult` (`backend/app/providers/triage/prompt.py:91`, `:108`). The service re-validates whatever any provider returns (`backend/app/services/triage.py:122-124` and the validation that follows).
+2. **The request always completes.** A 10 s hard deadline applies to each call (`backend/app/services/triage.py:122`, `anyio.fail_after`), with one jittered retry only on retryable errors (`:105`, `:108`). Any failure falls back to rules (`:88-96`). `POST /api/complaints` returns 201 even when the provider always raises (`backend/tests/test_triage_resilience.py:150`).
+3. **Degradation is visible.** A fallback is stored as `triaged_by = rules:fallback`, logged as exactly one WARNING with the complaint id, provider and error class (`backend/app/services/triage.py:88`), counted in `/metrics`, and listed in `/api/meta/providers`.
+4. **Untrusted input can't steer the output outside the schema.** An injection attempt still yields a category decided by our schema (`backend/tests/test_triage_llm.py:191`).
+
+Whether the category is *semantically* right is a quality metric, not a correctness property. We measure it separately (the fallback rate and the cache hit rate in `/api/meta/providers`) instead of asserting it in CI.
+
+**Keeping CI deterministic.** CI never calls a model. Tests pin `TRIAGE_PROVIDER=simulated` (`backend/tests/conftest.py:20`). `SimulatedTriage` (`backend/app/providers/triage/simulated.py:57`) is seeded and offline, and it injects every failure class on demand. Retry waits and jitter are injected (`TriageService(sleep=..., jitter=...)`), so no test calls `sleep()`. Groq and Ollama are tested against scripted HTTP responses (`httpx.MockTransport`), including prose, code fences and out-of-enum answers. The same test gives the same result on every run.
 
 ---
 
-## Q7 — How is a zero-downtime rolling deployment achieved?
+## Q5 — Your HPA lag: seconds between offered load rising and replicas rising; where did the time go, and what would reduce it?
 
-*TODO: Answer with file + line references after Phase 11–12.*
+*TODO (Phase 12): measure from a real `kubectl get hpa -w` capture during the k6 run.*
 
 ---
 
-## Q8 — How is the HPA/VPA conflict handled?
+## Q6 — Why VPA is in Off mode; describe the failure mode of running it in Auto alongside your HPA
 
-*TODO: Answer after Phase 12.*
+*TODO (Phase 12).*
+
+---
+
+## Q7 — Your `internal: true` network blocks outbound traffic. Where does that leave the service that calls a hosted LLM, and how did you resolve it?
+
+*TODO (Phase 9): answer with the final `compose.yaml` lines. Planned design: the backend is the only service on both `edge` and `internal`, so it's the only one that can reach Groq. PostgreSQL and Redis stay internal-only. Ollama can run internal-only too, because it only needs the internet to download a model: a one-shot pull service on `edge` fills the shared `ollama_models` volume and exits.*
+
+---
+
+## Q8 — The failure: something that cost more than an hour — symptoms, what you wrongly believed first, and the exact command or log line that told you the truth
+
+*TODO (team): this must be a real incident from our own work, told in our own words. Don't fabricate one. A real candidate from Phase 3: an end-to-end check failed with `AttributeError: 'NoneType' object has no attribute 'send'` from asyncpg on the second request. The first belief was a bug in the new service code. The truth was that `TestClient` without a `with` block starts a new event loop per request, so pooled Postgres connections from request 1 were bound to a dead loop. Re-running against a real `uvicorn` server showed every endpoint working.*
+
+---
+
+# Part 2 — Other required justifications
+
+## Indexes, and the query each one serves (§2.3)
+
+Both are declared at `backend/app/models/complaint.py:93-94` and created by the migration `backend/alembic/versions/0001_initial.py`.
+
+- **`idx_complaint_status_priority (status, priority)`** serves the operations dashboard's filtered list and its total count: `WHERE status = :s AND priority = :p` in `list_complaints` / `count_complaints` (`backend/app/repositories/complaint.py:70`, `:101`, with the filters at `:90-92`). Status comes first because operators almost always filter by status ("show me open complaints") and then narrow by priority.
+- **`idx_complaint_created_at (created_at)`** serves the dashboard's newest-first ordering and pagination, `ORDER BY created_at DESC LIMIT/OFFSET` (`backend/app/repositories/complaint.py:85`), and the "last 20 triage outcomes" query for `/api/meta/providers` (`:189`). Without it, every page would sort the whole table.
+
+## Why the stats cache uses a TTL *and* explicit invalidation (§2.4)
+
+- **Invalidation gives freshness.** A new complaint or status change deletes the cached stats right after the commit (`backend/app/services/complaints.py:61`, `backend/app/services/status.py:89`, which calls `backend/app/providers/cache.py:78`). The next read recomputes, so a new complaint shows up in the stats immediately rather than up to 30 s later.
+- **The TTL is the safety net for writes the invalidation can't see.** Examples: a `DEL` lost during a Redis blip (the failure is logged, not raised, `cache.py:81`); a replica that crashes between commit and invalidate; a row changed directly in the database. The 30 s expiry set at `cache.py:72` bounds staleness no matter what goes wrong.
+- Either one alone is insufficient. With TTL only, stats lag every write by up to 30 s. With invalidation only, a single missed `DEL` leaves the stats wrong indefinitely.
+
+## The rate limiter is distributed (§2.4, Job 2)
+
+The counter lives in Redis, never in the backend process: `SET key 0 EX window NX; INCR key; TTL key` runs in one `MULTI/EXEC` (`backend/app/providers/rate_limit.py:59-61`). Every replica increments the same key, so with the HPA at four pods a client still gets 10 complaints per minute, not 40. Tested with two limiter instances sharing one Redis (`backend/tests/test_redis_cache_and_ratelimit.py`, `test_two_replicas_share_one_limit`). It was also verified on 2026-09-27 with **two real uvicorn processes** on one Redis 7: 12 requests round-robined across them gave exactly 10 × 201 and 2 × 429 (`Retry-After: 57`).
+
+The key is the *real* client IP. Behind nginx or the Ingress, the socket peer is the proxy, so `X-Forwarded-For` is honoured only from peers listed in `FORWARDED_ALLOW_IPS` (`backend/app/core/config.py:61`, applied at `backend/app/main.py:111`). A client can't mint new IPs to dodge the limit (tested).
+
+**If Redis is down, the limiter fails open** (`rate_limit.py:66`): the complaint is accepted, a WARNING is logged and `civicpulse_rate_limit_total{outcome="error"}` increments. A citizen reporting a flooded street shouldn't be refused because a cache is down; the provider's own quota and the rules fallback still bound the damage. The trade-off is that `/ready` checks Redis, so a sustained Redis outage also takes backend pods out of the Service. We accept this because Redis is part of the deployment's contract, and readiness should report it honestly.
+
+## Why the cache needs a volume (Redis AOF, §2.4)
+
+A cache can be rebuilt, but in our system Redis holds more than rebuildable data:
+
+- **Rate-limit windows.** Without persistence, a Redis restart zeroes every counter, and a client blocked a second earlier gets a fresh budget immediately. On 2026-09-27 we restarted a Redis 7 container running `--appendonly yes` on a named volume: the counter was 13 before and 13 after, the TTL kept counting down, and the client stayed blocked (429).
+- **The AI triage cache.** Each entry stands for one LLM call against a free-tier quota of tens of requests per minute. Losing 24 h of cached answers on every restart spends that quota again on duplicates.
+- **The stats cache** is genuinely disposable. Persisting it is harmless, because the TTL expires it anyway.
+
+Persistence doesn't make Redis a system of record. PostgreSQL remains the only source of truth for complaints, and nothing breaks if Redis starts empty; it just costs quota and resets rate limits. *The AOF configuration itself (`appendonly yes` on the `redisdata` volume) lands in `compose.yaml` in Phase 9. Cite that line here then.*
+
+## Development bind mount (§3.2)
+
+*TODO (Phase 9): one sentence on why the source bind mount is right in `compose.yaml` (hot reload while developing) and wrong in `compose.prod.yaml` (production must run exactly the image that was built, scanned and tagged by SHA).*
