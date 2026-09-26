@@ -94,7 +94,7 @@ async def ready() -> JSONResponse:
         try:
             await r.ping()
         finally:
-            await r.aclose()
+            await r.aclose()  # type: ignore[attr-defined]  # types-redis stubs predate redis 5
         checks["redis"] = {"status": "ok"}
     except Exception as exc:
         is_ready = False
