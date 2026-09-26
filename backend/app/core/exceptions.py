@@ -89,9 +89,13 @@ async def validation_exception_handler(
     request: Request,  # noqa: ARG001
     exc: RequestValidationError,
 ) -> JSONResponse:
-    """Return 422 with field-level validation errors."""
+    """Return 400 with field-level validation errors.
+
+    The assignment contract (plan §1.1) requires 400 for invalid input, so we
+    override FastAPI's default 422.
+    """
     return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=status.HTTP_400_BAD_REQUEST,
         content={"detail": exc.errors(), "code": "validation_error"},
     )
 
@@ -100,9 +104,9 @@ async def pydantic_validation_handler(
     request: Request,  # noqa: ARG001
     exc: ValidationError,
 ) -> JSONResponse:
-    """Handle Pydantic v2 ValidationError raised inside business logic."""
+    """Handle Pydantic v2 ValidationError raised inside business logic (→ 400)."""
     return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=status.HTTP_400_BAD_REQUEST,
         content={"detail": exc.errors(), "code": "validation_error"},
     )
 
