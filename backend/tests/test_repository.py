@@ -129,7 +129,9 @@ async def test_update_status(db_session: AsyncSession):
     )
     await db_session.commit()
 
-    updated = await update_status(db_session, complaint.id, Status.in_progress)
+    updated = await update_status(
+        db_session, complaint.id, Status.in_progress, expected_status=Status.open
+    )
     await db_session.commit()
 
     assert updated is not None
@@ -139,8 +141,57 @@ async def test_update_status(db_session: AsyncSession):
     assert u_time >= c_time
 
     # Update non-existent complaint
-    missing = await update_status(db_session, uuid.uuid4(), Status.resolved)
+    missing = await update_status(
+        db_session, uuid.uuid4(), Status.resolved, expected_status=Status.in_progress
+    )
     assert missing is None
+
+
+@pytest.mark.asyncio
+async def test_update_status_is_compare_and_set(db_session: AsyncSession):
+    """A transition based on a stale status must not apply (concurrent PATCH race)."""
+    complaint = await create_complaint(
+        db_session,
+        text="Sarak par bara gharha hai, gaariyan phas rahi hain.",
+        location="Canal Road, Faisal Town",
+        status=Status.open,
+    )
+    await db_session.commit()
+
+    first = await update_status(
+        db_session, complaint.id, Status.in_progress, expected_status=Status.open
+    )
+    assert first is not None
+
+    # A second request that also read "open" before the first one committed.
+    second = await update_status(
+        db_session, complaint.id, Status.rejected, expected_status=Status.open
+    )
+    assert second is None
+
+    current = await get_complaint(db_session, complaint.id)
+    assert current is not None
+    assert current.status == Status.in_progress
+
+
+@pytest.mark.asyncio
+async def test_list_order_is_stable_for_equal_timestamps(db_session: AsyncSession):
+    """Rows with identical created_at must page deterministically (id tie-breaker)."""
+    from datetime import datetime
+
+    same_time = datetime(2026, 1, 1, tzinfo=UTC)
+    for i in range(5):
+        c = await create_complaint(
+            db_session, text=f"Kachra nahin uthaya gaya {i} din se.", location="DHA Phase 5"
+        )
+        c.created_at = same_time
+    await db_session.commit()
+
+    page1 = await list_complaints(db_session, page=1, page_size=3)
+    page2 = await list_complaints(db_session, page=2, page_size=3)
+    ids = [c.id for c in page1 + page2]
+    assert len(ids) == len(set(ids)) == 5
+    assert ids == sorted(ids, reverse=True)
 
 
 @pytest.mark.asyncio

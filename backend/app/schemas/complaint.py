@@ -17,7 +17,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models.complaint import Status
+from app.models.complaint import Category, Priority, Status, TriagedBy
 
 
 class ComplaintCreate(BaseModel):
@@ -46,19 +46,24 @@ class ComplaintCreate(BaseModel):
 
 
 class ComplaintResponse(BaseModel):
-    """Full complaint object returned by GET and POST responses."""
+    """Complaint object returned by GET and POST responses.
+
+    ``reporter_contact`` is deliberately excluded: the API has no
+    authentication, so returning it would publish every reporter's phone or
+    email on the public list endpoint (see ADR 0004). Enum-typed fields make
+    the allowed values visible in OpenAPI for the typed frontend client.
+    """
 
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
     text: str
     location: str
-    reporter_contact: str | None
-    category: str
-    priority: str
-    status: str
+    category: Category
+    priority: Priority
+    status: Status
     ai_summary: str | None
-    triaged_by: str | None
+    triaged_by: TriagedBy | None
     triage_latency_ms: int | None
     created_at: datetime
     updated_at: datetime

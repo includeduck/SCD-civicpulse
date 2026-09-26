@@ -41,3 +41,46 @@ def test_cors_headers_exposed(client: TestClient):
     # Either 200 OK or appropriate CORS headers
     is_ok = response.status_code == status.HTTP_200_OK
     assert "access-control-allow-origin" in response.headers or is_ok
+
+
+def test_unsafe_request_id_is_replaced(client: TestClient):
+    """Client IDs that could forge log fields or bloat logs are replaced with a UUID."""
+    for bad in ('x" level="critical', "a" * 129):
+        response = client.get("/health", headers={"X-Request-ID": bad})
+        request_id = response.headers["X-Request-ID"]
+        assert request_id != bad
+        uuid.UUID(request_id)
+
+
+def test_unhandled_error_keeps_request_id():
+    """A 500 must still carry X-Request-ID, and its error log must include the request_id."""
+    import logging
+
+    from app.core.logging import request_id_var
+    from app.main import create_app
+
+    app = create_app()
+
+    @app.get("/boom")
+    async def boom():
+        raise RuntimeError("unexpected")
+
+    seen: list[str] = []
+
+    class _Capture(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            if "Unhandled exception" in record.getMessage():
+                seen.append(request_id_var.get())
+
+    handler = _Capture()
+    logging.getLogger("app.core.exceptions").addHandler(handler)
+    try:
+        with TestClient(app, raise_server_exceptions=False) as test_client:
+            response = test_client.get("/boom", headers={"X-Request-ID": "trace-500"})
+    finally:
+        logging.getLogger("app.core.exceptions").removeHandler(handler)
+
+    assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+    assert response.headers.get("X-Request-ID") == "trace-500"
+    assert response.json()["code"] == "internal_error"
+    assert seen == ["trace-500"]

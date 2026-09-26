@@ -6,7 +6,6 @@ Every log line is a JSON object written to stdout. Fields always include:
   - logger name
   - message
   - request_id (when available via contextvars)
-  - environment
 
 API keys and secrets must never appear in log messages. The logging config
 strips nothing automatically — callers are responsible for not logging secrets.
@@ -37,10 +36,12 @@ def _add_request_id(
     return event_dict
 
 
-def configure_logging(log_level: str = "INFO", environment: str = "development") -> None:
+def configure_logging(log_level: str = "INFO", log_format: str = "json") -> None:
     """Wire up structlog with JSON output.
 
     Call once at application startup (inside the lifespan handler).
+    JSON is the default in every environment so Compose/K8s logs are machine-readable;
+    set LOG_FORMAT=console for human-friendly local output.
     """
     shared_processors: list[Any] = [
         structlog.contextvars.merge_contextvars,
@@ -52,7 +53,7 @@ def configure_logging(log_level: str = "INFO", environment: str = "development")
         structlog.processors.format_exc_info,
     ]
 
-    if environment == "development":
+    if log_format == "console":
         renderer: Any = structlog.dev.ConsoleRenderer()
     else:
         renderer = structlog.processors.JSONRenderer()

@@ -17,7 +17,9 @@ def test_get_providers_metadata(client: TestClient):
     assert len(data["providers"]) == 4
 
     provider_names = {p["name"] for p in data["providers"]}
-    assert provider_names == {"simulated", "rules", "llm:groq", "llm:ollama"}
+    assert provider_names == {"simulated", "rules", "llm", "ollama"}
+    labels = {p["triaged_by"] for p in data["providers"]}
+    assert labels == {"simulated", "rules", "llm:groq", "llm:ollama"}
 
     # Check that active_provider matches exactly one active flag
     active_in_list = [p for p in data["providers"] if p["active"]]

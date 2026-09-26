@@ -92,12 +92,14 @@ Complaint fields:
 - `id`: UUID, server generated
 - `text`: 10–2000 chars
 - `location`: 3–200 chars
-- `reporter_contact`: nullable
+- `reporter_contact`: nullable; stored but never returned by the API (PII, ADR 0004)
 - `category`: `water | electricity | sanitation | roads | streetlights | other`
 - `priority`: `high | normal | low`
 - `status`: `open | in_progress | resolved | rejected`
 - `ai_summary`: nullable, <= 140 chars
 - `triaged_by`: `llm:groq | llm:ollama | rules | rules:fallback`
+  (plus `simulated`, written only by `SimulatedTriage` in CI/tests and documented
+  in TRIAGE.md; seed data uses production labels only)
 - `triage_latency_ms`: integer
 - `created_at`: timestamptz UTC
 - `updated_at`: timestamptz UTC
@@ -952,11 +954,41 @@ Verify rows remain.
 
 ## Goal
 
-Implement all core complaint behavior without AI complexity first.
+Implement all core complaint behavior end to end, with deterministic rule-based triage and no Redis or LLM complexity yet.
+
+## Prerequisites already in place (Phases 1–2)
+
+- `get_db` yields a session and **does not commit**; anything uncommitted is rolled back (see Unit of work below).
+- `update_status(..., expected_status=...)` is a compare-and-set update.
+- `list_complaints` orders by `created_at DESC, id DESC`.
+- `ComplaintResponse` uses enum types and never includes `reporter_contact`.
+- Validation errors return `400` with field-level errors.
+
+## Triage moved forward from Phase 4
+
+Complaint creation needs a category, priority and an honest `triaged_by` label, so Phase 3 delivers the minimum triage slice:
+
+```text
+providers/triage/base.py    TriageResult, async TriageProvider protocol (§1.4)
+providers/triage/rules.py   RuleBasedTriage (spec in §9), triaged_by = "rules"
+```
+
+`ComplaintService` receives a `TriageProvider` through a FastAPI dependency. In Phase 3 that dependency always returns `RuleBasedTriage`. Phase 4 adds `SimulatedTriage` and the factory, and changes only the dependency, not the service.
+
+Tests inject a fake provider through `app.dependency_overrides`.
+
+## Placeholder interfaces for Phase 6
+
+Define these now so Phase 6 swaps implementations without touching services:
+
+```text
+StatsCache    get() / set(value, ttl) / invalidate()   Phase 3 impl: NoOpStatsCache (always MISS)
+RateLimiter   check(client_ip) -> None | raises RateLimitError   Phase 3 impl: AllowAllRateLimiter
+```
+
+Both are injected through dependencies. `GET /api/stats` already sets `X-Cache` from the cache result, so it reports `MISS` until Phase 6.
 
 ## Domain services
-
-Create:
 
 ```text
 ComplaintService
@@ -964,26 +996,30 @@ StatusService
 StatsService
 ```
 
-Potential responsibility split:
-
 ### ComplaintService
 
-- validate/use domain inputs
-- invoke triage service
-- persist complaint
-- invalidate relevant caches through cache abstraction
+- check the rate limiter (placeholder)
+- call the injected triage provider, measuring `triage_latency_ms`
+- persist the complaint
+- commit
+- invalidate the stats cache **after** the commit
 
 ### StatusService
 
-- own transition table
-- validate transition
-- update repository
-- invalidate the stats cache (status counts change)
+- owns `ALLOWED_TRANSITIONS`
+- validates the transition, then calls `update_status(..., expected_status=current)`
+- if the update returns `None`, re-reads: missing -> 404, status changed meanwhile -> 409
+- commits, then invalidates the stats cache
+- exposes `allowed_transitions(status)` for responses
 
 ### StatsService
 
-- aggregate stats
-- coordinate cache
+- aggregates counts by category, priority and status
+- reads through `StatsCache`
+
+## Unit of work
+
+Services own the transaction: `await session.commit()` before returning, then run post-commit side effects such as cache invalidation. Never rely on dependency teardown to commit. FastAPI runs code after `yield` once the response has been sent, so a failed commit there would follow a `201` the client already received.
 
 ## State machine
 
@@ -1000,29 +1036,69 @@ ALLOWED_TRANSITIONS = {
 
 Do not implement this as scattered route-level conditionals.
 
+A same-status request (for example `open -> open`) is not in the table and returns `409`.
+
+409 body, rendered verbatim by the frontend:
+
+```json
+{
+  "detail": "Cannot transition complaint from 'resolved' to 'open'.",
+  "code": "invalid_transition"
+}
+```
+
+`ComplaintResponse` gains `allowed_transitions: list[Status]`, computed by `StatusService`. The dashboard offers only those actions and never copies the table (§1.5).
+
 ## Endpoints
 
-Implement all complaint endpoints except advanced AI/Redis behavior as placeholders through interfaces.
+| Endpoint | Success | Errors |
+|---|---|---|
+| `POST /api/complaints` | 201 + `ComplaintResponse` | 400 validation |
+| `GET /api/complaints/{id}` | 200 | 400 malformed UUID, 404 unknown id |
+| `GET /api/complaints` | 200 + `ComplaintListResponse` | 400 invalid filter or paging |
+| `PATCH /api/complaints/{id}/status` | 200 | 400 invalid body/status value, 404, 409 |
+| `GET /api/stats` | 200 + `StatsResponse`, `X-Cache` header | — |
+
+List query parameters:
+
+- `category`, `priority`, `status`: enum-typed, so an unknown value returns 400 instead of an empty list
+- `page`: integer >= 1, default 1
+- `page_size`: integer 1–100, default 20
+- `total` and `total_pages` computed with the same filters
+
+`reporter_contact` is accepted on `POST` and stored, but never returned by any endpoint. Record this in ADR 0004.
 
 ## Validation errors
 
 Return `400` with field-level errors (see §1.1).
 
+## Tests
+
+API tests may override `get_db` with SQLite for speed. Anything that depends on PostgreSQL behavior must also run against PostgreSQL 16, locally until CI provides a Postgres service in Phase 13. That covers CHECK constraints, timezone-aware timestamps, and the compare-and-set update.
+
 ## Exit criteria
 
 Tests cover:
 
-- valid complaint creation
+- valid complaint creation -> 201, rule-based category/priority, `triaged_by == "rules"`, latency recorded
+- response never contains `reporter_contact`
 - invalid text length -> 400
 - invalid location -> 400
 - get existing complaint
 - get missing complaint -> 404
-- filters
-- pagination
-- page size >100 -> 400
+- get malformed id -> 400
+- each filter, and unknown filter value -> 400
+- pagination, including stable ordering across pages
+- page size >100 -> 400, page < 1 -> 400
 - every valid status transition
-- every invalid transition -> 409
+- every invalid transition -> 409 with the exact message
+- same-status transition -> 409
 - terminal state behavior
+- `allowed_transitions` matches the table for every status
+- stale concurrent transition -> 409 (compare-and-set)
+- `GET /api/stats` counts by category, priority and status, with `X-Cache: MISS`
+- stats cache invalidated after create and after status change (verified with a fake `StatsCache`)
+- commit happens before the response: a failing commit returns 500, not 201
 
 ---
 
@@ -1034,16 +1110,15 @@ Make AI replaceable before implementing a real model.
 
 ## Tasks
 
-Create:
+`base.py` (`TriageResult`, async `TriageProvider`) and `rules.py` are delivered in
+Phase 3 (§8). This phase adds:
 
 ```text
-providers/triage/base.py
-providers/triage/rules.py
 providers/triage/simulated.py
 providers/triage/factory.py
 ```
 
-Define enums and `TriageResult`.
+and replaces Phase 3's fixed `RuleBasedTriage` dependency with the factory.
 
 ## RuleBasedTriage
 
@@ -1094,6 +1169,9 @@ Must:
 - optionally produce predictable outcomes from input
 
 ## Factory
+
+`TRIAGE_PROVIDER` values are configuration names; the `triaged_by` label each
+provider records is a separate vocabulary (`llm` -> `llm:groq`, `ollama` -> `llm:ollama`).
 
 Select provider from:
 
