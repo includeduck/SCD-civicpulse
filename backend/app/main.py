@@ -18,6 +18,7 @@ from fastapi import APIRouter, FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import ValidationError
+from redis.asyncio import Redis
 
 from app.core.config import get_settings
 from app.core.exceptions import (
@@ -50,11 +51,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         version=settings.app_version,
         environment=settings.environment,
     )
-    yield
-    logger.info(
-        "Application shutting down",
-        app_name=settings.app_name,
-    )
+    # One Redis client per process, bound to the server's event loop.
+    app.state.redis = Redis.from_url(str(settings.redis_url), socket_timeout=2.0)
+    try:
+        yield
+    finally:
+        logger.info("Application shutting down", app_name=settings.app_name)
+        await app.state.redis.aclose()  # type: ignore[attr-defined]
+        close_provider = getattr(app.state.triage_provider, "close", None)
+        if callable(close_provider):
+            close_provider()
 
 
 def create_app() -> FastAPI:

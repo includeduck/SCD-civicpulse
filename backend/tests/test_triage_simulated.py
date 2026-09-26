@@ -113,15 +113,15 @@ def test_rejects_bad_configuration(kwargs):
         SimulatedTriage(**kwargs)
 
 
-# ── Through the API (until Phase 5 adds fallback, failures surface as 500) ──
+# ── Through the API: failures fall back to rules (Phase 5) ──────────────────
 
 
-@pytest.mark.parametrize("mode", ["invalid", "timeout"])
-def test_provider_failure_is_a_server_error_not_a_client_error(client: TestClient, app, mode):
-    """Bad provider output is never blamed on the citizen (no 400), and nothing is stored."""
+@pytest.mark.parametrize("mode", ["invalid", "timeout", "bad_request", "error"])
+def test_injected_failures_fall_back_to_rules(client: TestClient, app, mode):
+    """Bad provider output is never blamed on the citizen, and never a 500."""
     app.dependency_overrides[get_triage_provider] = lambda: SimulatedTriage(failure_mode=mode)
-    with TestClient(app, raise_server_exceptions=False) as failing:
-        response = failing.post("/api/complaints", json={"text": TEXT, "location": LOCATION})
-    assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
-    del app.dependency_overrides[get_triage_provider]
-    assert client.get("/api/complaints").json()["total"] == 0
+    response = client.post("/api/complaints", json={"text": TEXT, "location": LOCATION})
+    assert response.status_code == status.HTTP_201_CREATED
+    body = response.json()
+    assert body["triaged_by"] == "rules:fallback"
+    assert (body["category"], body["priority"]) == ("water", "high")
