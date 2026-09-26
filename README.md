@@ -91,8 +91,9 @@ The backend follows a 4-layer architecture: **routes → services → repositori
 | 2 | Database models, Alembic migrations, repositories, seed | ✅ Done |
 | 3 | Complaint domain and API, rule-based triage | ✅ Done |
 | 4 | Simulated triage provider and provider factory | ✅ Done |
-| 5 | LLM/Ollama providers, retry, fallback, AI cache | ⏳ Next |
-| 6–7 | Redis stats cache/rate limiting, observability | 🔜 Planned |
+| 5 | LLM/Ollama providers, timeout, retry, fallback, AI cache, injection guardrail | ✅ Done |
+| 6 | Redis stats cache and distributed rate limiter | ⏳ Next |
+| 7 | Observability and graceful shutdown | 🔜 Planned |
 | 8–9 | Frontend, Docker Compose | 🔜 Planned |
 | 10–15 | Tests, Kubernetes, CI/CD, documentation | 🔜 Planned |
 
@@ -109,7 +110,7 @@ See [CivicPulse_ImplementationPlan.md](CivicPulse_ImplementationPlan.md) for the
 | `GET` | `/api/complaints/{id}` | Get a single complaint | ✅ |
 | `PATCH` | `/api/complaints/{id}/status` | Transition complaint status | ✅ |
 | `GET` | `/api/stats` | Aggregate stats with `X-Cache` header (Redis caching lands in Phase 6) | ✅ |
-| `GET` | `/api/meta/providers` | Active triage provider and the last 20 triage outcomes | ✅ |
+| `GET` | `/api/meta/providers` | Active triage provider, last 20 triage outcomes, AI-cache hit rate | ✅ |
 | `GET` | `/health` | Liveness probe (no DB) | ✅ |
 | `GET` | `/ready` | Readiness probe (checks PG + Redis) | ✅ |
 | `GET` | `/metrics` | Prometheus metrics | ✅ |
