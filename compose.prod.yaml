@@ -1,0 +1,188 @@
+# CivicPulse, production stack: runs prebuilt images only.
+#
+#   IMAGE_TAG=<commit-sha> docker compose -f compose.prod.yaml up -d
+#
+# Differences from compose.yaml, each deliberate:
+#   - image: pinned to ${IMAGE_TAG}, a commit SHA (ADR 0003); no build: anywhere
+#   - no source bind mount and no --reload: production runs exactly the image
+#     that CI built, scanned and tagged
+#   - the only published port is the frontend's; the backend, database and
+#     cache are reachable only on the Compose networks
+#   - migrate runs migrations only; demo seed data is not loaded in production
+
+name: civicpulse
+
+x-backend-image: &backend-image
+  image: ${REGISTRY:-ghcr.io/includeduck/scd-civicpulse}/backend:${IMAGE_TAG:?set IMAGE_TAG to a commit SHA}
+
+x-backend-env: &backend-env
+  DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:?set in .env}:${POSTGRES_PASSWORD:?set in .env}@postgres:5432/${POSTGRES_DB:?set in .env}
+  REDIS_URL: redis://redis:6379/0
+  OLLAMA_BASE_URL: http://ollama:11434
+  LOG_FORMAT: json
+  ENVIRONMENT: production
+
+services:
+  postgres:
+    image: postgres:16.15-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?set in .env}
+      POSTGRES_USER: ${POSTGRES_USER:?set in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      internal:
+        aliases: [database]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 1G }
+
+  redis:
+    image: redis:7.4.11-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+    volumes:
+      - redisdata:/data
+    networks: [internal]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 256M }
+
+  migrate:
+    <<: *backend-image
+    command: ["alembic", "upgrade", "head"]
+    environment: *backend-env
+    networks: [internal]
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: "no"
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 256M }
+
+  backend:
+    <<: *backend-image
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      <<: *backend-env
+      FORWARDED_ALLOW_IPS: 172.30.10.10
+    networks: [edge, internal]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request, sys; sys.exit(urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2).status != 200)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+    stop_grace_period: 30s
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 512M }
+
+  frontend:
+    image: ${REGISTRY:-ghcr.io/includeduck/scd-civicpulse}/frontend:${IMAGE_TAG:?set IMAGE_TAG to a commit SHA}
+    restart: unless-stopped
+    environment:
+      BACKEND_URL: http://backend:8000
+    ports:
+      - "${FRONTEND_PORT:-8080}:8080"
+    networks:
+      edge:
+        ipv4_address: 172.30.10.10
+    depends_on:
+      backend: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 128M }
+
+  ollama-pull:
+    image: ollama/ollama:0.34.4@sha256:8262851b2846b87c649eddf3e76beb270c52f4d1bc94559f47efde16b0841551
+    profiles: [ollama]
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        ollama serve >/dev/null 2>&1 &
+        until ollama list >/dev/null 2>&1; do sleep 1; done
+        ollama show "$$OLLAMA_MODEL" >/dev/null 2>&1 || ollama pull "$$OLLAMA_MODEL"
+    environment:
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2:1b}
+    volumes:
+      - ollama_models:/root/.ollama
+    networks: [edge]
+    restart: "no"
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits: { cpus: "2.0", memory: 1G }
+
+  ollama:
+    image: ollama/ollama:0.34.4@sha256:8262851b2846b87c649eddf3e76beb270c52f4d1bc94559f47efde16b0841551
+    profiles: [ollama]
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        ollama serve & pid=$$!
+        trap 'kill -TERM $$pid' TERM INT
+        until ollama list >/dev/null 2>&1; do sleep 1; done
+        ollama run "$$OLLAMA_MODEL" "Reply with OK" >/dev/null
+        wait $$pid
+    environment:
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2:1b}
+      OLLAMA_KEEP_ALIVE: "-1"
+    volumes:
+      - ollama_models:/root/.ollama
+    networks: [internal]
+    depends_on:
+      ollama-pull: { condition: service_completed_successfully }
+    healthcheck:
+      test: ["CMD-SHELL", "ollama ps | grep -q \"$${OLLAMA_MODEL}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
+    deploy:
+      resources:
+        limits: { cpus: "4.0", memory: 3G }
+
+networks:
+  edge:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.10.0/24
+  internal:
+    driver: bridge
+    internal: true
+
+volumes:
+  pgdata:
+  redisdata:
+  ollama_models:
