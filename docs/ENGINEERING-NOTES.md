@@ -12,7 +12,11 @@
 
 ## Q1 — Three things that differ between your laptop and a CI runner, and the exact line in a Dockerfile or manifest that freezes each
 
-*TODO (Phases 9 and 13): answer from the final `backend/Dockerfile`, `frontend/Dockerfile` and `.github/workflows/ci.yml`. Candidates we have already met: the Python version (the laptop had Python 3.14 while the project targets 3.12, so the `python:3.12-slim` base line freezes it); dependency versions (the laptop venv had FastAPI 0.141 against the pinned 0.115.6, so the `==` pins in `backend/pyproject.toml` freeze them); and the triage provider (a laptop may use Groq, while CI pins `TRIAGE_PROVIDER=simulated`).*
+All three are differences we actually hit.
+
+1. **The Python interpreter.** The laptop had Python 3.14 installed; the runner has whatever its image ships. Frozen by `backend/Dockerfile:6` and `:24`, `FROM python:3.12.14-slim@sha256:f77ac9e4…`, where the digest also freezes the OS packages underneath. CI's own test job pins the same minor version (`.github/workflows/ci.yml:25`, `PYTHON_VERSION: "3.12"`).
+2. **Dependency versions.** The laptop's first virtualenv had drifted to FastAPI 0.141 against the 0.115.6 we target. Frozen by the `==` pins in `backend/pyproject.toml` (e.g. line 8, `"fastapi==0.115.6"`), installed in the image before any source is copied. On the frontend, `frontend/package-lock.json` plus `npm ci` (never `npm install`) does the same job.
+3. **The triage provider and its environment.** A laptop may run Ollama or Groq with a personal `.env`; CI must be deterministic and has no model. Frozen by `.github/workflows/ci.yml:96`, `TRIAGE_PROVIDER: simulated`. Also, `backend/tests/conftest.py` switches off the settings' `.env` file, so a developer's `.env` can't change test results either (a bug we found in Phase 9).
 
 ---
 
