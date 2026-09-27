@@ -83,3 +83,6 @@ graphify-out/
 
 # Course material: the assignment brief is not ours to publish
 /Software Construction and Design*.pdf
+
+# Generated per deploy by scripts/cd_deploy.sh
+k8s/overlays/.deploy/
