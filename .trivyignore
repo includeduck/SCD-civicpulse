@@ -1,0 +1,7 @@
+# Vulnerabilities accepted on purpose, one per line, each with a reason and a
+# review date. CI already skips CVEs with no fixed version (--ignore-unfixed),
+# so anything here is a fixable HIGH/CRITICAL that we've decided to live with
+# for now. Keep this list empty whenever possible.
+#
+# Format:
+# CVE-YYYY-NNNNN  # why it doesn't apply / why it's acceptable; review by YYYY-MM-DD

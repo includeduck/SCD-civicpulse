@@ -1,0 +1,224 @@
+# Continuous integration (assignment §3.4): every PR to main or dev, and every
+# push to dev. It builds but never publishes: a PR must not produce artifacts
+# anyone could deploy (that's cd.yml, on main only, gated by `needs:`).
+#
+# Supply chain: every action is pinned to a full commit SHA (the tag is in the
+# comment), and third-party tools run from images pinned by digest.
+name: CI
+
+on:
+  pull_request:
+    branches: [main, dev]
+  push:
+    branches: [dev]
+
+# Least privilege: the jobs only read the repository.
+permissions:
+  contents: read
+
+# A newer push to the same branch or PR supersedes the running one.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "22"
+  TRIVY_IMAGE: aquasec/trivy:0.74.0@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969
+  KUBECONFORM_IMAGE: ghcr.io/yannh/kubeconform:v0.8.0@sha256:faffaf43f95aa6425306e1ab8d6fcad72acb9049158f38e574c085ea1ec0f64e
+
+jobs:
+  lint-and-type:
+    name: lint-and-type
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Backend — install
+        working-directory: backend
+        run: pip install -e ".[dev]"
+      - name: Backend — ruff (lint)
+        working-directory: backend
+        run: ruff check .
+      - name: Backend — ruff (format)
+        working-directory: backend
+        run: ruff format --check .
+      - name: Backend — mypy
+        working-directory: backend
+        run: mypy app scripts
+      - name: Contract — frontend/openapi.json matches the backend
+        working-directory: backend
+        run: python -m scripts.export_openapi --check
+
+      - name: Frontend — install
+        working-directory: frontend
+        run: npm ci
+      - name: Frontend — eslint
+        working-directory: frontend
+        run: npm run lint
+      - name: Frontend — tsc --noEmit
+        working-directory: frontend
+        run: npm run typecheck
+      - name: Contract — generated TypeScript types are current
+        working-directory: frontend
+        run: npm run check:api
+
+  test-backend:
+    name: test-backend
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    # A real PostgreSQL 16, so the tests that SQLite can't prove (migrations,
+    # CHECK constraints, compare-and-set, seed idempotency) run in CI too.
+    # Throwaway credentials for a database that lives only as long as this job.
+    services:
+      postgres:
+        image: postgres:16.15-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+        env:
+          POSTGRES_USER: civicpulse
+          POSTGRES_PASSWORD: ci-throwaway
+          POSTGRES_DB: civicpulse_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U civicpulse -d civicpulse_test"
+          --health-interval 2s --health-timeout 3s --health-retries 30
+    env:
+      TRIAGE_PROVIDER: simulated   # deterministic: CI never calls a model
+      TEST_DATABASE_URL: postgresql+asyncpg://civicpulse:ci-throwaway@localhost:5432/civicpulse_test
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+      - name: Install
+        working-directory: backend
+        run: pip install -e ".[dev]"
+      - name: pytest (random order; fails under 90 % coverage of app/)
+        working-directory: backend
+        run: pytest --cov-report=term-missing --cov-report=xml
+      - name: Coverage report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: backend-coverage
+          path: backend/coverage.xml
+          retention-days: 7
+
+  test-frontend:
+    name: test-frontend
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install
+        working-directory: frontend
+        run: npm ci
+      - name: Vitest (shuffled; coverage thresholds enforced)
+        working-directory: frontend
+        run: npm run test:coverage
+
+  build:
+    name: build (${{ matrix.image }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [backend, frontend]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build (no push)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ${{ matrix.image }}
+          push: false
+          tags: civicpulse/${{ matrix.image }}:ci-${{ github.sha }}
+          outputs: type=docker,dest=${{ runner.temp }}/${{ matrix.image }}.tar
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,scope=${{ matrix.image }},mode=max
+      - name: Image size
+        run: |
+          docker load -i "${{ runner.temp }}/${{ matrix.image }}.tar"
+          docker image ls "civicpulse/${{ matrix.image }}:ci-${{ github.sha }}" --format '{{.Repository}}:{{.Tag}} {{.Size}}' | tee -a "$GITHUB_STEP_SUMMARY"
+      # Handed to the scan job only; this is not a published artifact.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: image-${{ matrix.image }}
+          path: ${{ runner.temp }}/${{ matrix.image }}.tar
+          retention-days: 1
+
+  scan:
+    name: scan (${{ matrix.image }})
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [backend, frontend]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: image-${{ matrix.image }}
+          path: ${{ runner.temp }}
+      # Fail on HIGH/CRITICAL that have a fixed version available. Unfixed CVEs
+      # can't be acted on by us; accepted exceptions go in .trivyignore with a
+      # reason and a review date.
+      - name: Trivy
+        run: |
+          docker run --rm -v "${{ runner.temp }}:/scan:ro" -v "$PWD/.trivyignore:/.trivyignore:ro" \
+            "$TRIVY_IMAGE" image --input "/scan/${{ matrix.image }}.tar" \
+            --severity HIGH,CRITICAL --ignore-unfixed --ignorefile /.trivyignore \
+            --exit-code 1 --no-progress --format table
+
+  manifests:
+    name: manifests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # kustomize build | kubeconform: a broken manifest fails here in seconds,
+      # not on the cluster. The VPA's CRD schema comes from the CRDs catalog,
+      # pinned to a commit.
+      - name: kustomize build | kubeconform (dev and prod)
+        run: |
+          for overlay in dev prod; do
+            echo "::group::overlays/$overlay"
+            kubectl kustomize "k8s/overlays/$overlay" | docker run --rm -i "$KUBECONFORM_IMAGE" \
+              -strict -summary -kubernetes-version 1.35.0 \
+              -schema-location default \
+              -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/ad3b08c5045129d7bb1eeffd8e61719b2c8dd1e2/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+              -
+            echo "::endgroup::"
+          done
+
+  integration:
+    name: integration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # compose up, wait for /ready, POST a complaint, GET it back, assert the
+      # category, X-Cache MISS -> HIT, the frontend can't reach the database,
+      # compose down -v.
+      - name: End-to-end on Docker Compose
+        run: bash scripts/ci_integration.sh
