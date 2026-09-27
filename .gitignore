@@ -78,3 +78,6 @@ docs/evidence/*.jpg
 
 # ─── Graphify ────────────────────────────────────────────────────────────────
 graphify-out/
+
+# Course material: the assignment brief is not ours to publish
+/Software Construction and Design*.pdf
