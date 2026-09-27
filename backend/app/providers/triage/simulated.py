@@ -105,9 +105,7 @@ class SimulatedTriage:
                     summary="x" * 400,
                     confidence=7.0,
                 )
-            raise _ERRORS[self.failure_mode](
-                f"simulated {self.failure_mode} (seed={self.seed})"
-            )
+            raise _ERRORS[self.failure_mode](f"simulated {self.failure_mode} (seed={self.seed})")
 
         ruled = self._rules.triage(text, location)
         summary = (_SUMMARY_PREFIX + ruled.summary)[:140]

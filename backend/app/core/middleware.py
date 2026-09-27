@@ -87,7 +87,9 @@ class RequestMetricsMiddleware:
             route = scope.get("route")
             endpoint = getattr(route, "path", None) or "unmatched"
             method = scope["method"]
-            REQUEST_COUNT.labels(method=method, endpoint=endpoint, status_code=str(status_code)).inc()
+            REQUEST_COUNT.labels(
+                method=method, endpoint=endpoint, status_code=str(status_code)
+            ).inc()
             REQUEST_LATENCY.labels(method=method, endpoint=endpoint).observe(elapsed)
             logger.info(
                 "request_completed",

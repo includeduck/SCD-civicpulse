@@ -133,10 +133,16 @@ class TriageService:
         except TriageError as exc:
             if not exc.retryable:
                 raise
-            TRIAGE_RETRIES.labels(provider=self._provider.name, error_class=type(exc).__name__).inc()
+            TRIAGE_RETRIES.labels(
+                provider=self._provider.name, error_class=type(exc).__name__
+            ).inc()
             delay = self._retry_base * self._jitter(0.5, 1.5)
-            logger.info("triage_retry", provider=self._provider.name,
-                        error_class=type(exc).__name__, delay_seconds=round(delay, 3))
+            logger.info(
+                "triage_retry",
+                provider=self._provider.name,
+                error_class=type(exc).__name__,
+                delay_seconds=round(delay, 3),
+            )
             await self._sleep(delay)
             return await self._call_once(text, location)  # a second failure propagates
 
@@ -157,9 +163,7 @@ class TriageService:
                     limiter=self._limiter,
                 )
         except TimeoutError as exc:
-            raise TriageTimeoutError(
-                f"{self._provider.name}: exceeded {self._timeout:g}s"
-            ) from exc
+            raise TriageTimeoutError(f"{self._provider.name}: exceeded {self._timeout:g}s") from exc
         try:
             return TriageResult.model_validate(result.model_dump())
         except (ValidationError, AttributeError) as exc:

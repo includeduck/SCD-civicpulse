@@ -14,14 +14,25 @@ RECENT_OUTCOMES_LIMIT = 20  # assignment §2.2: "the last 20 triage outcomes"
 
 # (TRIAGE_PROVIDER value, triaged_by label, fallback label, description)
 _PROVIDERS: tuple[tuple[str, str, str | None, str], ...] = (
-    ("simulated", TriagedBy.simulated, TriagedBy.rules_fallback,
-     "Deterministic simulated provider for CI and testing"),
-    ("rules", TriagedBy.rules, None,
-     "Heuristic keyword/rules-based triage engine"),
-    ("llm", TriagedBy.llm_groq, TriagedBy.rules_fallback,
-     "Hosted Groq Cloud LLM triage provider with retry and fallback"),
-    ("ollama", TriagedBy.llm_ollama, TriagedBy.rules_fallback,
-     "Local Ollama LLM provider running in the Compose stack"),
+    (
+        "simulated",
+        TriagedBy.simulated,
+        TriagedBy.rules_fallback,
+        "Deterministic simulated provider for CI and testing",
+    ),
+    ("rules", TriagedBy.rules, None, "Heuristic keyword/rules-based triage engine"),
+    (
+        "llm",
+        TriagedBy.llm_groq,
+        TriagedBy.rules_fallback,
+        "Hosted Groq Cloud LLM triage provider with retry and fallback",
+    ),
+    (
+        "ollama",
+        TriagedBy.llm_ollama,
+        TriagedBy.rules_fallback,
+        "Local Ollama LLM provider running in the Compose stack",
+    ),
 )
 
 

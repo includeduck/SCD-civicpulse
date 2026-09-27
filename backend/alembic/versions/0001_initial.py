@@ -1,7 +1,7 @@
 """Initial migration — create complaints table.
 
 Revision ID: 0001_initial
-Revises: 
+Revises:
 Create Date: 2026-09-25
 
 Tables created:

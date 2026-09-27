@@ -55,7 +55,12 @@ def test_stats_counts_every_dimension(client: TestClient):
     assert body["total_complaints"] == 3
     by_category = {row["category"]: row["count"] for row in body["by_category"]}
     assert by_category == {
-        "water": 2, "electricity": 0, "sanitation": 0, "roads": 1, "streetlights": 0, "other": 0,
+        "water": 2,
+        "electricity": 0,
+        "sanitation": 0,
+        "roads": 1,
+        "streetlights": 0,
+        "other": 0,
     }
     by_priority = {row["priority"]: row["count"] for row in body["by_priority"]}
     assert by_priority == {"high": 2, "normal": 0, "low": 1}

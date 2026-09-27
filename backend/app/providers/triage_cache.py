@@ -75,7 +75,9 @@ class RedisTriageCache:
             raw = await self._redis.get(key)
             await self._redis.incr(_HITS_KEY if raw is not None else _MISSES_KEY)
         except RedisError as exc:
-            logger.warning("triage_cache_unavailable", operation="get", error_class=type(exc).__name__)
+            logger.warning(
+                "triage_cache_unavailable", operation="get", error_class=type(exc).__name__
+            )
             return None
         if raw is None:
             return None
@@ -97,7 +99,9 @@ class RedisTriageCache:
         try:
             await self._redis.set(key, payload, ex=self._ttl)
         except RedisError as exc:
-            logger.warning("triage_cache_unavailable", operation="set", error_class=type(exc).__name__)
+            logger.warning(
+                "triage_cache_unavailable", operation="set", error_class=type(exc).__name__
+            )
 
     async def stats(self) -> CacheStats:
         try:

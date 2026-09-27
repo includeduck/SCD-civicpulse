@@ -15,7 +15,9 @@ from sqlalchemy.pool import StaticPool
 # Set test environment variables before importing app
 os.environ["ENVIRONMENT"] = "test"
 os.environ["DEBUG"] = "true"
-os.environ["DATABASE_URL"] = "postgresql+asyncpg://civicpulse:civicpulse@localhost:5432/civicpulse_test"
+os.environ["DATABASE_URL"] = (
+    "postgresql+asyncpg://civicpulse:civicpulse@localhost:5432/civicpulse_test"
+)
 os.environ["REDIS_URL"] = "redis://localhost:6379/1"
 os.environ["TRIAGE_PROVIDER"] = "simulated"
 

@@ -27,7 +27,9 @@ from app.services.triage import TriageService
 
 TEXT = "Burst water main flooding Street 12 since fajr, water entering ground floors"
 LOCATION = "Street 12, G-10/2"
-GOOD = TriageResult(category=Category.water, priority=Priority.high, summary="Burst main", confidence=0.9)
+GOOD = TriageResult(
+    category=Category.water, priority=Priority.high, summary="Burst main", confidence=0.9
+)
 
 
 class ScriptedProvider:
@@ -116,7 +118,9 @@ async def test_non_retryable_errors_fall_back_without_retry(error):
 
 
 async def test_6b_output_that_fails_the_schema_is_rejected():
-    bad = TriageResult.model_construct(category="panic", priority="now", summary="x" * 500, confidence=9)
+    bad = TriageResult.model_construct(
+        category="panic", priority="now", summary="x" * 500, confidence=9
+    )
     outcome = await _run(_service(ScriptedProvider(bad)))
     assert outcome.triaged_by == "rules:fallback"
     assert outcome.result.category == Category.water  # decided by the rules, not the bad output
@@ -155,7 +159,9 @@ def test_7_provider_that_always_raises_still_returns_201(client: TestClient, app
 
 
 def test_7b_fallback_logs_exactly_one_warning_with_id_provider_and_error(client: TestClient, app):
-    app.dependency_overrides[get_triage_provider] = lambda: ScriptedProvider(TriageServerError("503"))
+    app.dependency_overrides[get_triage_provider] = lambda: ScriptedProvider(
+        TriageServerError("503")
+    )
     records: list[logging.LogRecord] = []
 
     class Capture(logging.Handler):
@@ -180,7 +186,9 @@ def test_7b_fallback_logs_exactly_one_warning_with_id_provider_and_error(client:
 
 
 def test_fallback_is_visible_in_meta(client: TestClient, app):
-    app.dependency_overrides[get_triage_provider] = lambda: ScriptedProvider(TriageBadRequestError("400"))
+    app.dependency_overrides[get_triage_provider] = lambda: ScriptedProvider(
+        TriageBadRequestError("400")
+    )
     client.post("/api/complaints", json={"text": TEXT, "location": LOCATION})
     outcome = client.get("/api/meta/providers").json()["recent_outcomes"][0]
     assert (outcome["provider"], outcome["fallback"]) == ("rules:fallback", True)

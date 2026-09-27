@@ -28,6 +28,7 @@ READINESS_CHECK_TIMEOUT_SECONDS = 2.0
 
 router = APIRouter(tags=["Health & Diagnostics"])
 
+
 @router.get("/health", status_code=status.HTTP_200_OK, summary="Liveness Probe")
 async def health() -> dict[str, str]:
     """Lightweight liveness check.
@@ -71,9 +72,7 @@ async def ready(request: Request) -> JSONResponse:
     # 2. Check Redis, with the same pooled client the app uses (no new
     #    connection per probe).
     try:
-        await asyncio.wait_for(
-            request.app.state.redis.ping(), READINESS_CHECK_TIMEOUT_SECONDS
-        )
+        await asyncio.wait_for(request.app.state.redis.ping(), READINESS_CHECK_TIMEOUT_SECONDS)
         checks["redis"] = {"status": "ok"}
     except Exception as exc:
         is_ready = False
@@ -87,9 +86,7 @@ async def ready(request: Request) -> JSONResponse:
 
     if is_ready:
         return JSONResponse(status_code=status.HTTP_200_OK, content=payload)
-    return JSONResponse(
-        status_code=status.HTTP_503_SERVICE_UNAVAILABLE, content=payload
-    )
+    return JSONResponse(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, content=payload)
 
 
 @router.get("/metrics", summary="Prometheus Metrics")

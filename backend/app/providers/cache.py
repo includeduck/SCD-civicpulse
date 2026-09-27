@@ -54,7 +54,9 @@ class RedisStatsCache:
             raw = await self._redis.get(self._key)
         except RedisError as exc:
             STATS_CACHE.labels(result="error").inc()
-            logger.warning("stats_cache_unavailable", operation="get", error_class=type(exc).__name__)
+            logger.warning(
+                "stats_cache_unavailable", operation="get", error_class=type(exc).__name__
+            )
             return None
         if raw is None:
             STATS_CACHE.labels(result="miss").inc()
@@ -71,7 +73,9 @@ class RedisStatsCache:
         try:
             await self._redis.set(self._key, json.dumps(value), ex=self._ttl)
         except RedisError as exc:
-            logger.warning("stats_cache_unavailable", operation="set", error_class=type(exc).__name__)
+            logger.warning(
+                "stats_cache_unavailable", operation="set", error_class=type(exc).__name__
+            )
 
     async def invalidate(self) -> None:
         try:
