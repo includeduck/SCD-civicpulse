@@ -1,0 +1,25 @@
+# k3s's bundled Traefik, configured so the backend sees one stable client
+# address per real client (applied by scripts/k8s-up.sh after the cluster exists).
+#
+# By default k3s runs one Traefik pod behind per-node "svclb" forwarders that
+# rewrite the source address to their node's gateway (10.42.<node>.x). The
+# backend's rate limiter then saw a different "client" depending on which node
+# carried the request, so one client got a separate budget on each node.
+# Found on 2026-09-27: 12 requests, all accepted, with a limit of 10.
+#
+# Traefik on every node (DaemonSet) plus externalTrafficPolicy: Local keeps
+# the source address intact up to Traefik, which records it in
+# X-Forwarded-For. Traefik also drops any X-Forwarded-For sent by the client
+# (it trusts no upstream), so the header can't be forged.
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: traefik
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    deployment:
+      kind: DaemonSet
+    service:
+      spec:
+        externalTrafficPolicy: Local

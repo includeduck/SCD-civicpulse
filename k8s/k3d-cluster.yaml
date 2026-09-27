@@ -1,0 +1,18 @@
+# Local cluster used for development and by CI (Phase 14): the same file in
+# both places, so "works on my cluster" means the same thing everywhere.
+#
+#   k3d cluster create --config k8s/k3d-cluster.yaml
+#   k3d cluster delete civicpulse
+#
+# k3s ships Traefik (the Ingress controller), metrics-server (needed by the
+# HPA) and a NetworkPolicy controller, so nothing else has to be installed.
+apiVersion: k3d.io/v1alpha5
+kind: Simple
+metadata:
+  name: civicpulse
+servers: 1
+agents: 2                          # three nodes: replicas actually spread, drains are realistic
+image: rancher/k3s:v1.35.5-k3s1    # pinned, never :latest
+ports:
+  - port: 8081:80                  # Ingress on http://localhost:8081 (8080 is Compose's frontend)
+    nodeFilters: [loadbalancer]
