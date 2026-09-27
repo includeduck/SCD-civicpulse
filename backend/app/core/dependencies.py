@@ -17,8 +17,8 @@ from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.config import Settings, get_settings
-from app.providers.cache import NoOpStatsCache, StatsCache
-from app.providers.rate_limit import AllowAllRateLimiter, RateLimiter
+from app.providers.cache import RedisStatsCache, StatsCache
+from app.providers.rate_limit import RateLimiter, RedisFixedWindowRateLimiter
 from app.providers.triage.base import TriageProvider
 from app.providers.triage_cache import RedisTriageCache, TriageCache
 from app.services.complaints import ComplaintService
@@ -87,11 +87,6 @@ DbSession = Annotated[AsyncSession, Depends(get_db)]
 # Wiring lives here so routes only ever receive ready-made services. Tests swap
 # any of these via app.dependency_overrides.
 
-# Phase 6 replaces these placeholders with Redis implementations.
-_stats_cache = NoOpStatsCache()
-_rate_limiter = AllowAllRateLimiter()
-
-
 def get_triage_provider(request: Request) -> TriageProvider:
     """The provider built once by the factory in ``create_app``."""
     provider: TriageProvider = request.app.state.triage_provider
@@ -123,12 +118,18 @@ def get_triage_service(
     )
 
 
-def get_stats_cache() -> StatsCache:
-    return _stats_cache
+def get_stats_cache(
+    redis: Annotated[Redis, Depends(get_redis)], settings: SettingsDep
+) -> StatsCache:
+    return RedisStatsCache(redis, ttl_seconds=settings.redis_stats_ttl)
 
 
-def get_rate_limiter() -> RateLimiter:
-    return _rate_limiter
+def get_rate_limiter(
+    redis: Annotated[Redis, Depends(get_redis)], settings: SettingsDep
+) -> RateLimiter:
+    return RedisFixedWindowRateLimiter(
+        redis, limit=settings.rate_limit_requests, window_seconds=settings.rate_limit_window
+    )
 
 
 def get_complaint_service(

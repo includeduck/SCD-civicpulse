@@ -92,8 +92,8 @@ The backend follows a 4-layer architecture: **routes → services → repositori
 | 3 | Complaint domain and API, rule-based triage | ✅ Done |
 | 4 | Simulated triage provider and provider factory | ✅ Done |
 | 5 | LLM/Ollama providers, timeout, retry, fallback, AI cache, injection guardrail | ✅ Done |
-| 6 | Redis stats cache and distributed rate limiter | ⏳ Next |
-| 7 | Observability and graceful shutdown | 🔜 Planned |
+| 6 | Redis stats cache and distributed rate limiter | ✅ Done |
+| 7 | Observability and graceful shutdown | ⏳ Next |
 | 8–9 | Frontend, Docker Compose | 🔜 Planned |
 | 10–15 | Tests, Kubernetes, CI/CD, documentation | 🔜 Planned |
 
@@ -109,13 +109,13 @@ See [CivicPulse_ImplementationPlan.md](CivicPulse_ImplementationPlan.md) for the
 | `GET` | `/api/complaints` | List complaints (filterable, paginated) | ✅ |
 | `GET` | `/api/complaints/{id}` | Get a single complaint | ✅ |
 | `PATCH` | `/api/complaints/{id}/status` | Transition complaint status | ✅ |
-| `GET` | `/api/stats` | Aggregate stats with `X-Cache` header (Redis caching lands in Phase 6) | ✅ |
+| `GET` | `/api/stats` | Aggregate stats, Redis read-through cache (30 s TTL, invalidated on write), `X-Cache: HIT\|MISS` | ✅ |
 | `GET` | `/api/meta/providers` | Active triage provider, last 20 triage outcomes, AI-cache hit rate | ✅ |
 | `GET` | `/health` | Liveness probe (no DB) | ✅ |
 | `GET` | `/ready` | Readiness probe (checks PG + Redis) | ✅ |
 | `GET` | `/metrics` | Prometheus metrics | ✅ |
 
-Invalid input returns `400` with field-level errors. Invalid status transitions return `409` naming the transition, e.g. `Cannot transition complaint from 'resolved' to 'open'.` Every complaint response includes `allowed_transitions`, so clients never hardcode the state machine. Rate-limited requests will return `429` with `Retry-After` (Phase 6).
+Invalid input returns `400` with field-level errors. Invalid status transitions return `409` naming the transition, e.g. `Cannot transition complaint from 'resolved' to 'open'.` Every complaint response includes `allowed_transitions`, so clients never hardcode the state machine. `POST /api/complaints` is rate-limited per client IP (10 per 60 s by default, shared across replicas via Redis) and returns `429` with `Retry-After` when exceeded.
 
 ---
 
