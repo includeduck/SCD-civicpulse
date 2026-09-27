@@ -144,8 +144,9 @@ cd ../frontend && npm run gen:api                # regenerates src/api/schema.d.
 | 7 | Observability (JSON logs, request metrics) and graceful shutdown | ✅ Done |
 | 8 | Frontend (React + Vite + TypeScript), typed API client, nginx `/api` proxy | ✅ Done |
 | 9 | Docker Compose, networks, volumes, image hardening | ✅ Done |
-| 10 | Automated test strategy | ⏳ Next |
-| 11–15 | Kubernetes, CI/CD, documentation | 🔜 Planned |
+| 10 | Automated test strategy: coverage floors, random order, traceability ([TESTING.md](docs/TESTING.md)) | ✅ Done |
+| 11 | Kubernetes base and dev overlay | ⏳ Next |
+| 12–15 | Scaling, CI/CD, documentation | 🔜 Planned |
 
 See [CivicPulse_ImplementationPlan.md](CivicPulse_ImplementationPlan.md) for the full plan.
 
@@ -202,6 +203,7 @@ kubectl -n civicpulse get all
 - [Runbook](docs/RUNBOOK.md)
 - [AI Usage](docs/AI-USAGE.md)
 - [Triage Design](docs/TRIAGE.md)
+- [Test Strategy](docs/TESTING.md)
 - [ADR 0001 — Provider Interface](docs/adr/0001-provider-interface.md)
 - [ADR 0002 — Frontend Runtime Config](docs/adr/0002-frontend-runtime-config.md)
 - [ADR 0003 — Deploy by SHA](docs/adr/0003-deploy-by-sha.md)
