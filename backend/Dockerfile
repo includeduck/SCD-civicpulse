@@ -61,5 +61,10 @@ EXPOSE 8000
 HEALTHCHECK --interval=15s --timeout=3s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-# Exec-form CMD
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Exec-form CMD: uvicorn is PID 1 and receives SIGTERM directly, so it stops
+# accepting connections, drains in-flight requests (at most 25 s, inside the
+# Kubernetes default 30 s grace period), then runs the app's shutdown.
+# Proxy headers and access logs are handled by the app itself (trusted proxies
+# from FORWARDED_ALLOW_IPS; request_completed JSON events without client IPs).
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", \
+     "--timeout-graceful-shutdown", "25", "--no-proxy-headers", "--no-access-log"]
