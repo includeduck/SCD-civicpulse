@@ -29,6 +29,9 @@ for _ in $(seq 1 90); do
   sleep 2
 done
 kubectl -n kube-system rollout status ds/traefik --timeout=180s
+# VPA recommender (the base manifests include a VerticalPodAutoscaler).
+kubectl apply -k k8s/k3d/vpa
+kubectl -n kube-system rollout status deploy/vpa-recommender --timeout=180s
 
 step "Images (built here, imported into the cluster; no registry needed)"
 docker build -t "civicpulse/backend:$TAG" backend

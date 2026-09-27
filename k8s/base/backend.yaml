@@ -107,7 +107,11 @@ spec:
             preStop:
               sleep: { seconds: 5 }
           resources:
-            requests: { cpu: 100m, memory: 128Mi }   # the HPA's utilisation is relative to this request
+            # From the VPA's recommendation under load (Phase 12,
+            # docs/evidence/load/before-vpa/vpa-describe.txt: Target cpu 182m,
+            # memory 250Mi); our first guess was 100m / 128Mi. The HPA's
+            # utilisation is usage divided by this CPU request.
+            requests: { cpu: 182m, memory: 250Mi }
             limits: { cpu: 500m, memory: 384Mi }
           securityContext:
             allowPrivilegeEscalation: false
