@@ -26,3 +26,16 @@ The same pipeline also blocked two *real* problems before this demonstration, bo
 
 - **`scan (backend)` failed:** Starlette 0.41.3 had three HIGH CVEs, fixed by upgrading to FastAPI 0.141.1 / Starlette 1.7.0 (`06ffd46`).
 - **`test-backend` failed:** random test order exposed Alembic's `fileConfig` muting the app's loggers (`ced199b`).
+
+## A hole in the gate itself, found while collecting this evidence
+
+While committing these screenshots we found that `.gitignore` (from the Phase 0 scaffold) excluded `docs/evidence/*.png` and `k8s/base/secret.yaml`. The placeholder Secret had therefore **never been committed**: `kubectl kustomize` fails on a clean clone. Yet the `manifests` job had been passing. GitHub Actions runs steps without `pipefail`, so in `kubectl kustomize … | kubeconform` the failing first command was masked, and kubeconform validated **zero** resources and exited 0.
+
+Fixed on this PR:
+
+- `defaults.run.shell: bash` (which runs every step with `-eo pipefail`).
+- A step that fails when an overlay renders no resources.
+- The Secret, committed as intended (placeholders only).
+- The ignore rules corrected.
+
+The lesson: a check that can't fail isn't a check. Look at what a green job actually did, not just its colour.
