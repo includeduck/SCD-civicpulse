@@ -57,7 +57,16 @@ Whether the category is *semantically* right is a quality metric, not a correctn
 
 ## Q7 — Your `internal: true` network blocks outbound traffic. Where does that leave the service that calls a hosted LLM, and how did you resolve it?
 
-*TODO (Phase 9): answer with the final `compose.yaml` lines. Planned design: the backend is the only service on both `edge` and `internal`, so it's the only one that can reach Groq. PostgreSQL and Redis stay internal-only. Ollama can run internal-only too, because it only needs the internet to download a model: a one-shot pull service on `edge` fills the shared `ollama_models` volume and exits.*
+The backend is the only service on both networks (`compose.yaml:106`, `networks: [edge, internal]`), so it's the only one that can reach Groq. `internal` (`compose.yaml:213–215`) has no route out, and PostgreSQL, Redis and the Ollama server live only there (`compose.yaml:44`, `:63`, `:193`). The frontend is on `edge` only (`compose.yaml:132`).
+
+We considered and rejected a separate "AI gateway" container on `edge` that would be the only thing allowed out. It would narrow egress further, but it's one more service to build, secure and test, for no gain in this system: the backend already holds the only secret that matters for Groq (`GROQ_API_KEY`), and compromising the backend already means compromising the database.
+
+Ollama needed a decision of its own, because the model server must download weights once but never needs the internet afterwards. We split it in two:
+
+- **`ollama-pull`** (`compose.yaml:162`, on `edge`) is a one-shot container. It fetches the model into the `ollama_models` volume, skips the download if the model is already there, and exits.
+- **`ollama`** (`compose.yaml:193`, on `internal` only) serves from that volume with no route to the internet.
+
+So the model server, the component that parses complaint text, can't send it anywhere. Only the download step has egress, and it never sees a complaint.
 
 ---
 
@@ -98,8 +107,26 @@ A cache can be rebuilt, but in our system Redis holds more than rebuildable data
 - **The AI triage cache.** Each entry stands for one LLM call against a free-tier quota of tens of requests per minute. Losing 24 h of cached answers on every restart spends that quota again on duplicates.
 - **The stats cache** is genuinely disposable. Persisting it is harmless, because the TTL expires it anyway.
 
-Persistence doesn't make Redis a system of record. PostgreSQL remains the only source of truth for complaints, and nothing breaks if Redis starts empty; it just costs quota and resets rate limits. *The AOF configuration itself (`appendonly yes` on the `redisdata` volume) lands in `compose.yaml` in Phase 9. Cite that line here then.*
+Persistence doesn't make Redis a system of record. PostgreSQL remains the only source of truth for complaints, and nothing breaks if Redis starts empty; it just costs quota and resets rate limits. The configuration is `compose.yaml:60–62`: `redis-server --appendonly yes --appendfsync everysec` on the `redisdata` named volume. `everysec` bounds the loss on a crash to about one second of counters, which is an acceptable trade for not syncing to disk on every `INCR`.
 
 ## Development bind mount (§3.2)
 
-*TODO (Phase 9): one sentence on why the source bind mount is right in `compose.yaml` (hot reload while developing) and wrong in `compose.prod.yaml` (production must run exactly the image that was built, scanned and tagged by SHA).*
+`compose.yaml:103` mounts `./backend/app` read-only into the backend, and uvicorn runs with `--reload`, so an edit on the laptop is live in a second without a rebuild. That's right for development, where the fast feedback loop is the point. It's wrong in `compose.prod.yaml`, which has no mount at all: production must run exactly the image that CI built, tested, scanned and tagged with a commit SHA. A mount would silently replace that code with whatever happens to be on the host's disk, so the SHA tag would no longer describe what's running.
+
+## Images and build contexts (§3.1)
+
+Measured on 2026-09-27 with Docker 29 / BuildKit. Context sizes come from copying the context into a throwaway image and running `du`; image sizes are compressed (what a registry stores and a node pulls), with the uncompressed size on disk in brackets.
+
+| | Without `.dockerignore` | With `.dockerignore` |
+|---|---|---|
+| `backend/` build context | 213.8 MB, 7,977 files (`.venv`, caches) | 796 KB, 123 files |
+| `frontend/` build context | 193.2 MB, 11,306 files (`node_modules`) | 328 KB, 23 files |
+
+| Image | Build stage | Final image |
+|---|---|---|
+| Frontend (`node:22.23.3-alpine` → `nginx:1.27.5-alpine`) | 135 MB (559 MB) | **21.0 MB** (74 MB) |
+| Backend (`python:3.12.14-slim`, both stages) | 72.5 MB (312 MB) | **72.6 MB** (313 MB); was 84.0 MB (359 MB) before Phase 9 |
+
+The frontend split does the heavy lifting: Node, `node_modules` and the source stay in the build stage, and the final image is nginx plus about 250 KB of static files (`docker run --rm --entrypoint node <image>` fails: no such executable). The backend's two stages are nearly the same size because every dependency installs from a binary wheel (`--only-binary=:all:`), so there is no compiler to leave behind. The split still keeps pip's work out of the runtime layers, and if a dependency ever needs compiling, the toolchain goes in the builder only. The Phase 9 savings came from removing the compiler and `libpq-dev` from the builder, `curl` and `libpq5` from the runtime (the healthcheck uses Python's `urllib` instead), and two unused dependencies (`python-jose`, which also carried known HIGH CVEs, and `python-multipart`).
+
+Both runtime images run as non-root users: `appuser` (uid 10001) for the backend, `nginx` (uid 101) for the frontend. Both use exec-form commands, declare a `HEALTHCHECK` and pin their base images by version and digest. The backend's source is owned by root, so the app user can read it but not change it.

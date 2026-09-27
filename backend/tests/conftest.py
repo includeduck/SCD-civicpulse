@@ -19,10 +19,14 @@ os.environ["DATABASE_URL"] = "postgresql+asyncpg://civicpulse:civicpulse@localho
 os.environ["REDIS_URL"] = "redis://localhost:6379/1"
 os.environ["TRIAGE_PROVIDER"] = "simulated"
 
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 from app.core.dependencies import get_db, get_redis
 from app.main import create_app
 from app.models.complaint import Base
+
+# Tests never read the developer's .env (the quickstart creates one): only the
+# variables above and each test's own monkeypatching apply.
+Settings.model_config["env_file"] = None
 
 # Clear cached settings so test environment variables take effect
 get_settings.cache_clear()

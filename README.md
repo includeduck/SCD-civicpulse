@@ -26,33 +26,45 @@ graph TD
 
 ## Quick Start (local)
 
-> **Not available yet.** `compose.yaml` arrives in Phase 9. Until then, run the backend directly — see [Backend Development](#backend-development). The steps below are the target workflow.
+Needs Docker with Compose v2 (Docker Desktop on Windows or macOS). Nothing else.
 
 ```bash
-# 1. Clone
 git clone https://github.com/includeduck/SCD-civicpulse.git
 cd SCD-civicpulse
-
-# 2. Configure
-cp .env.example .env
-# Edit .env as needed (defaults work for local dev with simulated triage)
-
-# 3. Start everything
+cp .env.example .env          # then change POSTGRES_PASSWORD
 docker compose up --build
+```
 
-# 4. Open
-#   Frontend  → http://localhost:80
-#   API docs  → http://localhost:8000/docs
-#   Metrics   → http://localhost:8000/metrics
+| What | Where |
+|------|-------|
+| App (report, dashboard, stats) | http://localhost:8080 |
+| API docs | http://localhost:8000/docs |
+| Metrics | http://localhost:8000/metrics |
+
+A one-shot `migrate` service applies the migrations and loads 32 sample complaints before the backend starts, so the dashboard has data straight away. The first run also downloads the Ollama model (about 1.3 GB) into a volume. Complaints sent before it's ready are triaged by the keyword rules, and after that by the model. For a light stack without the model, set `COMPOSE_PROFILES=` and `TRIAGE_PROVIDER=rules` in `.env`.
+
+| Service | Networks | Published port | Volume |
+|---------|----------|----------------|--------|
+| `frontend` (nginx) | `edge` | 8080 | |
+| `backend` (FastAPI) | `edge`, `internal` | 8000 (dev only) | `./backend/app` bind mount (dev only) |
+| `postgres` (alias `database`) | `internal` | none | `pgdata` |
+| `redis` (AOF on) | `internal` | none | `redisdata` |
+| `ollama` | `internal` | none | `ollama_models` |
+| `migrate`, `ollama-pull` (one-shot) | `internal`, `edge` | none | |
+
+`internal` has no route to the internet, and the frontend has no route to the database: see [docs/evidence/network-isolation.txt](docs/evidence/network-isolation.txt). Production runs `compose.prod.yaml`: images tagged by commit SHA, no `build:`, no bind mount, and only the frontend's port published:
+
+```bash
+IMAGE_TAG=<commit-sha> docker compose -f compose.prod.yaml up -d
 ```
 
 ---
 
 ## Backend Development
 
-Run the backend outside Docker for faster iteration (Python 3.12, matching the image).
+**Inside Compose (recommended).** `docker compose up` mounts `backend/app` into the backend with hot reload, so an edit on your machine is live about a second later. Logs: `docker compose logs -f backend`.
 
-`DATABASE_URL` and `REDIS_URL` are required: there are no built-in defaults, so no credentials live in source. They're read from the environment or from the repository-root `.env`. `.env.example` uses the Compose service names (`postgres`, `redis`), which only resolve inside Docker. When running the backend directly on your machine, point them at `localhost` in your `.env`, e.g. `DATABASE_URL=postgresql+asyncpg://civicpulse:<password>@localhost:5432/civicpulse`.
+**Outside Docker** (Python 3.12, matching the image). The unit tests need no database or Redis: they use in-memory SQLite and fakeredis. To run the server itself, `DATABASE_URL` and `REDIS_URL` are required, with no built-in defaults, so no credentials live in source. They're read from the environment or the repository-root `.env`, where `.env.example` points them at `localhost`. Compose's PostgreSQL and Redis are deliberately not published to the host, so start your own for this (as in the `docker run` example below).
 
 ```bash
 cd backend
@@ -131,8 +143,9 @@ cd ../frontend && npm run gen:api                # regenerates src/api/schema.d.
 | 6 | Redis stats cache and distributed rate limiter | ✅ Done |
 | 7 | Observability (JSON logs, request metrics) and graceful shutdown | ✅ Done |
 | 8 | Frontend (React + Vite + TypeScript), typed API client, nginx `/api` proxy | ✅ Done |
-| 9 | Docker Compose, networks, volumes | ⏳ Next |
-| 10–15 | Tests, Kubernetes, CI/CD, documentation | 🔜 Planned |
+| 9 | Docker Compose, networks, volumes, image hardening | ✅ Done |
+| 10 | Automated test strategy | ⏳ Next |
+| 11–15 | Kubernetes, CI/CD, documentation | 🔜 Planned |
 
 See [CivicPulse_ImplementationPlan.md](CivicPulse_ImplementationPlan.md) for the full plan.
 
