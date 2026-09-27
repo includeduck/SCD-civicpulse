@@ -56,6 +56,8 @@ known-third-party = ["alembic"]
 
 [tool.mypy]
 python_version = "3.12"
+# Understands pydantic models; e.g. BaseSettings fields come from the environment.
+plugins = ["pydantic.mypy"]
 strict = false
 ignore_missing_imports = true
 

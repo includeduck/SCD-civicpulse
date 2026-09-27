@@ -394,10 +394,10 @@ COMPLAINTS = [
 
 async def run_seed() -> None:
     """Seed the database idempotently with >=30 complaints."""
-    db_url = os.getenv(
-        "DATABASE_URL",
-        "postgresql+asyncpg://civicpulse:civicpulse@localhost:5432/civicpulse",
-    )
+    # From the environment, or .env via the app settings; never a hardcoded default.
+    from app.core.config import Settings
+
+    db_url = os.getenv("DATABASE_URL") or str(Settings().database_url)
     if db_url.startswith("postgresql://"):
         db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
 

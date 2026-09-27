@@ -97,8 +97,8 @@ class SimulatedTriage:
                 # over-long summary, confidence out of range. Built without
                 # validation, exactly as untrusted provider output would arrive.
                 return TriageResult.model_construct(
-                    category="urgent-maybe",
-                    priority="very high",
+                    category="urgent-maybe",  # type: ignore[arg-type]  # invalid on purpose
+                    priority="very high",  # type: ignore[arg-type]  # invalid on purpose
                     summary="x" * 400,
                     confidence=7.0,
                 )
