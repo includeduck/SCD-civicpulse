@@ -84,6 +84,40 @@ The backend follows a 4-layer architecture: **routes → services → repositori
 
 ---
 
+## Frontend Development
+
+React 18 + Vite + TypeScript (Node 22). Three views: **Report** (`/`), **Dashboard** (`/dashboard`) and **Stats** (`/stats`).
+
+```bash
+cd frontend
+npm ci
+npm run dev        # http://localhost:5173, proxies /api to the backend on :8000
+npm run lint       # ESLint
+npm run typecheck  # tsc --noEmit
+npm test           # Vitest component tests
+npm run build      # production bundle in dist/
+```
+
+The app only calls relative `/api/...` paths. In production nginx proxies them to `BACKEND_URL`, read when the container starts, so one image runs in every environment ([ADR 0002](docs/adr/0002-frontend-runtime-config.md)). In development Vite's dev server does the proxying (`DEV_BACKEND_URL` overrides the default `http://localhost:8000`).
+
+```bash
+docker build -t civicpulse-frontend ./frontend
+docker run -p 8080:8080 -e BACKEND_URL=http://<backend-host>:8000 civicpulse-frontend
+```
+
+**Typed API client.** Request and response types are generated from the backend's OpenAPI schema, never written by hand. When the API changes:
+
+```bash
+cd backend && python -m scripts.export_openapi   # writes frontend/openapi.json
+cd ../frontend && npm run gen:api                # regenerates src/api/schema.d.ts
+```
+
+`backend/tests/test_openapi_contract.py` fails if `frontend/openapi.json` is stale, and `tsc` then fails wherever the frontend no longer matches the contract.
+
+**No business rules in the UI.** Status buttons are the complaint's `allowed_transitions` from the server, and input limits and enum values are read from the OpenAPI schema. To see the server's `409` in the dashboard, open it in two tabs, change a complaint's status in one, then try a now-stale action in the other: the server's message is shown word for word.
+
+---
+
 ## Project Status
 
 | Phase | Scope | Status |
@@ -96,8 +130,8 @@ The backend follows a 4-layer architecture: **routes → services → repositori
 | 5 | LLM/Ollama providers, timeout, retry, fallback, AI cache, injection guardrail | ✅ Done |
 | 6 | Redis stats cache and distributed rate limiter | ✅ Done |
 | 7 | Observability (JSON logs, request metrics) and graceful shutdown | ✅ Done |
-| 8 | Frontend (React + Vite + TypeScript) | ⏳ Next |
-| 9 | Docker Compose, networks, volumes | 🔜 Planned |
+| 8 | Frontend (React + Vite + TypeScript), typed API client, nginx `/api` proxy | ✅ Done |
+| 9 | Docker Compose, networks, volumes | ⏳ Next |
 | 10–15 | Tests, Kubernetes, CI/CD, documentation | 🔜 Planned |
 
 See [CivicPulse_ImplementationPlan.md](CivicPulse_ImplementationPlan.md) for the full plan.
