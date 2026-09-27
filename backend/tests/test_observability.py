@@ -85,14 +85,15 @@ def test_request_metrics_use_route_templates_not_ids(client: TestClient):
         'method="GET",status_code="404"}'
     )
     before = _metric(client, series)
-    for _ in range(3):
-        client.get(f"/api/complaints/{uuid.uuid4()}")
+    requested = [str(uuid.uuid4()) for _ in range(3)]
+    for complaint_id in requested:
+        client.get(f"/api/complaints/{complaint_id}")
     assert _metric(client, series) == before + 3
 
     text = client.get("/metrics").text
     assert "civicpulse_request_duration_seconds_bucket" in text
     assert 'endpoint="/api/complaints/{complaint_id}"' in text
-    assert str(uuid.UUID(int=0))[:8] not in text
+    assert not any(complaint_id in text for complaint_id in requested)
 
 
 def test_unmatched_paths_share_one_label(client: TestClient):

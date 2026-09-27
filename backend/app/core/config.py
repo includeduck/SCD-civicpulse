@@ -43,14 +43,15 @@ class Settings(BaseSettings):
     )
 
     # ── Database ───────────────────────────────────────────────────
-    database_url: PostgresDsn = Field(  # type: ignore[assignment]  # str default is validated
-        default="postgresql+asyncpg://civicpulse:civicpulse@localhost:5432/civicpulse"
-    )
+    # Required, no default: credentials only ever come from the environment /
+    # .env / a Kubernetes Secret, never from source (assignment §3.2).
+    database_url: PostgresDsn
     database_pool_size: int = 10
     database_max_overflow: int = 20
 
     # ── Redis ──────────────────────────────────────────────────────
-    redis_url: RedisDsn = Field(default="redis://localhost:6379/0")  # type: ignore[assignment]
+    # Required: in Compose/K8s this is the service name, never localhost.
+    redis_url: RedisDsn
     redis_stats_ttl: int = 30           # seconds, per §1.3
     redis_ai_cache_ttl: int = 86400     # 24 hours, per §1.4
 
@@ -85,7 +86,7 @@ class Settings(BaseSettings):
     groq_api_key: SecretStr = SecretStr("")
     groq_base_url: str = "https://api.groq.com/openai/v1"
     groq_model: str = "llama-3.1-8b-instant"
-    ollama_base_url: str = "http://localhost:11434"
+    ollama_base_url: str = "http://ollama:11434"  # the Compose service, not localhost
     ollama_model: str = "llama3.2:1b"
 
     @property

@@ -50,7 +50,9 @@ docker compose up --build
 
 ## Backend Development
 
-Run the backend outside Docker for faster iteration (Python 3.12+):
+Run the backend outside Docker for faster iteration (Python 3.12, matching the image).
+
+`DATABASE_URL` and `REDIS_URL` are required: there are no built-in defaults, so no credentials live in source. They're read from the environment or from the repository-root `.env`. `.env.example` uses the Compose service names (`postgres`, `redis`), which only resolve inside Docker. When running the backend directly on your machine, point them at `localhost` in your `.env`, e.g. `DATABASE_URL=postgresql+asyncpg://civicpulse:<password>@localhost:5432/civicpulse`.
 
 ```bash
 cd backend
@@ -142,8 +144,8 @@ kubectl -n civicpulse get all
 
 | Member | GitHub |
 |--------|--------|
-| Member 1 | [@includeduck](https://github.com/includeduck) |
-| Member 2 | *TBD* |
+| Muhammad Wasay Tariq | [@includeduck](https://github.com/includeduck) |
+| Talha Sami | [@tlhaasami](https://github.com/tlhaasami) |
 
 ---
 
