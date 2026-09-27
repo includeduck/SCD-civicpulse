@@ -7,11 +7,31 @@
 ## Deploy (local Docker Compose)
 
 ```bash
-cp .env.example .env   # first time only
-docker compose up --build -d
+cp .env.example .env              # first time only; change POSTGRES_PASSWORD
+docker compose up --build -d --wait
+docker compose ps                 # every long-running service should be "healthy"
 ```
 
-*`compose.yaml` arrives in Phase 9; until then run the backend directly (see the README's Backend Development section).*
+Start-up order is enforced by healthchecks: `postgres` and `redis` healthy, then `migrate` (migrations plus the idempotent seed) completes, then `backend` becomes healthy, then `frontend` starts. `ollama` starts in parallel after `ollama-pull` finishes. The backend doesn't wait for it; until Ollama is healthy, triage falls back to the rules.
+
+| Symptom | Check |
+|---------|-------|
+| `backend` never starts | `docker compose logs migrate`: a failed migration stops the backend on purpose |
+| `ollama` stays unhealthy | `docker compose logs ollama-pull ollama`; the first download is ~1.3 GB, and the model must fit in the 3 GB limit |
+| Complaints show `rules:fallback` | Ollama not ready yet, or see "When triage starts failing" below |
+| `429` from every client | The backend must trust X-Forwarded-For from the frontend only: `FORWARDED_ALLOW_IPS` must equal the frontend's `ipv4_address` in the compose file |
+
+Stop, keeping data: `docker compose down`. Stop and **delete all data** (database, Redis, model weights): `docker compose down -v`.
+
+## Deploy (production Compose)
+
+```bash
+export IMAGE_TAG=$(git rev-parse HEAD)   # the images CI published for this commit
+docker compose -f compose.prod.yaml pull
+docker compose -f compose.prod.yaml up -d --wait
+```
+
+`compose.prod.yaml` refuses to start without `IMAGE_TAG`. It runs migrations only (no demo seed), publishes only the frontend's port, and has no bind mount.
 
 ## Deploy (Kubernetes)
 
