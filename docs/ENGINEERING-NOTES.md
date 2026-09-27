@@ -22,12 +22,29 @@ All three are differences we actually hit.
 
 ## Q2 — Where your pipeline sits on the CI/CD maturity ladder (Lecture 03, slide 32); justify the rung, name the next rung and what it buys
 
-*TODO (team): place us on the rungs as the lecture names them. We don't have slide 32, so the rung names are yours to supply; don't let us invent them. The facts to map onto it:*
+Slide 32's ladder has five rungs: **1 Manual deployment → 2 Continuous Integration → 3 Continuous Delivery → 4 Continuous Deployment → 5 Production-grade** ("review · scan · staging · smoke test · approval · rollback · monitor").
 
-- **Every change is integrated and gated.** PRs into `dev`/`main` need nine green CI checks and one approval (`.github/workflows/ci.yml`, ruleset 23347090). The gate demonstrably blocks merges (`docs/evidence/ci-gate.md`).
-- **Every push to `main` is re-tested, published and deployed automatically** (`.github/workflows/cd.yml`): the full CI suite on the merged code, images pushed to GHCR by SHA with an SBOM, then deployed to a throwaway k3d cluster and smoke-tested through the Ingress. No human step between merge and a verified deployment.
-- **Not yet:** the deploy target is ephemeral, created inside the CI runner, not a long-lived environment users reach. There's no staged promotion (staging → production) and no automated rollback on a failed smoke test; rollback is a person running one of two commands (RUNBOOK, "Rollback").
-- So "continuous delivery to an ephemeral environment" is the honest description. The next step up is continuous deployment to a persistent environment with automated rollback, e.g. a GitOps controller (Argo CD or Flux) syncing `overlays/prod` and reverting when health checks fail. That buys an audited, self-healing production whose state is always exactly what Git says.
+**We're on rung 4, Continuous Deployment, with most of rung 5's practices, but not rung 5's target.**
+
+- **Rungs 2–3, done.** Every PR into `dev`/`main` is tested on a clean runner by nine required checks (`.github/workflows/ci.yml`), and `main` only moves through reviewed, green PRs (ruleset 23347090; the gate demonstrably blocks merges, `docs/evidence/ci-gate.md`). Every push to `main` produces the deployable artifact: images tagged by commit SHA in GHCR, with digests and an SBOM (`cd.yml`, `build-push`).
+- **Rung 4, done mechanically.** A push to `main` ships itself: `deploy-k8s` applies the prod overlay pinned to `<image>:<sha>@<digest>` with no human step (`cd.yml`, `scripts/cd_deploy.sh`). That is also slide 33's "build once, deploy the same artifact" (Q3).
+- **Rung 5's practices we already have:**
+
+  | Practice | Where |
+  |---|---|
+  | review | one required approval |
+  | scan | Trivy on both images, failing on fixable HIGH/CRITICAL |
+  | smoke test | through the Ingress after every deploy |
+  | approval | the ruleset |
+  | rollback | two documented, demonstrated methods: ADR 0003, `docs/evidence/k8s-rollback.txt` |
+- **Why not rung 5.** The deploy target is a **throwaway k3d cluster inside the CI runner**, not a production environment users reach. There is **no staging** stage to promote the same artifact through, and **monitoring** stops at a Prometheus `/metrics` endpoint that nothing scrapes, alerts on, or feeds back into a rollback. Our rung-4 "production" is honest about being a rehearsal.
+
+**The next rung, 5, and what it buys:**
+
+1. A persistent **staging** environment that receives the same SHA first, with automated checks before promotion to a persistent production.
+2. **Monitoring that closes the loop.** Prometheus actually scraping `/metrics`, with alerts on the fallback rate, error rate and latency, and the smoke test or alerts triggering the declarative rollback automatically.
+
+It buys the confidence to ship without watching. Today a bad build is caught by tests and by a human noticing; at rung 5 it's caught in staging, or rolled back by the system itself within minutes of reaching production.
 
 ---
 
