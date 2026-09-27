@@ -1,5 +1,7 @@
 """The reliability boundary around any triage provider (assignment §2.5 items 2–5).
 
+    injection?  ── yes ─► rules fallback (LLM providers only; never sent, never cached)
+       │ no
     cache hit?  ── yes ─► return cached result (triaged_by = original provider)
        │ no
     call provider (hard 10 s cap)
@@ -32,6 +34,7 @@ from app.providers.triage.base import (
     TriageResult,
     TriageTimeoutError,
 )
+from app.providers.triage.injection import detect_injection
 from app.providers.triage.rules import RuleBasedTriage
 from app.providers.triage_cache import CachedTriage, TriageCache, triage_cache_key
 
@@ -77,6 +80,16 @@ class TriageService:
 
     async def triage(self, complaint_id: uuid.UUID, text: str, location: str) -> TriageOutcome:
         started = time.perf_counter()
+
+        # Schema validation can't catch a model that obeys an injection with a
+        # valid value, so text that tries to instruct a model never reaches one.
+        if self._provider.name.startswith("llm:"):
+            rule = detect_injection(text, location)
+            if rule is not None:
+                return self._fall_back(
+                    started, complaint_id, text, location, "PromptInjectionDetected", rule=rule
+                )
+
         key = triage_cache_key(self._provider.name, text, location)
 
         cached = await self._cache.get(key)
@@ -88,19 +101,31 @@ class TriageService:
         try:
             result = await self._call_with_retry(text, location)
         except Exception as exc:  # noqa: BLE001 — any provider failure must fall back
-            error_class = type(exc).__name__
-            logger.warning(
-                "triage_fallback",
-                complaint_id=str(complaint_id),
-                provider=self._provider.name,
-                error_class=error_class,
-            )
-            TRIAGE_FALLBACKS.labels(provider=self._provider.name, error_class=error_class).inc()
-            fallback_result = self._fallback.triage(text, location)
-            return self._finish(started, fallback_result, TriagedBy.rules_fallback, fallback=True)
+            return self._fall_back(started, complaint_id, text, location, type(exc).__name__)
 
         await self._cache.set(key, CachedTriage(result=result, triaged_by=self._provider.name))
         return self._finish(started, result, self._provider.name)
+
+    def _fall_back(
+        self,
+        started: float,
+        complaint_id: uuid.UUID,
+        text: str,
+        location: str,
+        error_class: str,
+        **context: str,
+    ) -> TriageOutcome:
+        """Answer with the rules: exactly one WARNING, never cached."""
+        logger.warning(
+            "triage_fallback",
+            complaint_id=str(complaint_id),
+            provider=self._provider.name,
+            error_class=error_class,
+            **context,
+        )
+        TRIAGE_FALLBACKS.labels(provider=self._provider.name, error_class=error_class).inc()
+        fallback_result = self._fallback.triage(text, location)
+        return self._finish(started, fallback_result, TriagedBy.rules_fallback, fallback=True)
 
     async def _call_with_retry(self, text: str, location: str) -> TriageResult:
         try:

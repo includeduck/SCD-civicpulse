@@ -2,6 +2,9 @@
 
 Prompt-injection guardrail (assignment §2.5 item 7)
 ---------------------------------------------------
+0. Complaints that try to instruct the model are caught before any provider
+   call (``injection.py``) and triaged by the rules instead: schema checks
+   can't catch a model that obeys with a *valid* value.
 1. The complaint is *data*, never instructions. The system prompt says so, and
    the complaint is sent only inside a separate user message as a JSON object,
    so its text is escaped and cannot close or forge a delimiter.
