@@ -413,7 +413,7 @@ async def run_seed() -> None:
 
     async with session_factory() as session:
         for data in COMPLAINTS:
-            deterministic_id = seed_uuid(data["seed_key"])
+            deterministic_id = seed_uuid(str(data["seed_key"]))
 
             # Check if already seeded (idempotency check)
             existing = await session.get(Complaint, deterministic_id)
