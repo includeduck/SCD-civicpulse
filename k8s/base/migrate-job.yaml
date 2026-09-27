@@ -1,0 +1,61 @@
+# Migrations run once per deploy, here, never in every backend replica
+# (replicas starting together would race). Backend pods wait for the result
+# in their wait-for-schema initContainer.
+#
+# A Job's pod template is immutable, so a deploy deletes the previous Job first:
+#   kubectl -n civicpulse delete job migrate --ignore-not-found
+#   kubectl apply -k k8s/overlays/<env>
+#   kubectl -n civicpulse wait --for=condition=complete job/migrate --timeout=300s
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: migrate
+  labels: { app.kubernetes.io/name: migrate }
+spec:
+  backoffLimit: 4                  # Postgres may still be starting on a fresh cluster
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: migrate }
+    spec:
+      # Never: each retry is a new pod, and failed ones stay behind for `kubectl logs`.
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile: { type: RuntimeDefault }
+      initContainers:
+        # On a fresh cluster Postgres can take a while to initialise; wait for
+        # it explicitly instead of spending the Job's retries on "connection refused".
+        - name: wait-for-postgres
+          image: postgres:16.15-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+          command: ["sh", "-c", "until pg_isready -h \"$POSTGRES_HOST\" -p 5432 -t 2; do sleep 2; done"]
+          envFrom:
+            - configMapRef: { name: backend-config }
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { cpu: 100m, memory: 64Mi }
+          securityContext:
+            runAsUser: 70
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+      containers:
+        - name: migrate
+          image: civicpulse/backend:dev
+          command: ["alembic", "upgrade", "head"]
+          envFrom:
+            - configMapRef: { name: backend-config }
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: backend-secrets, key: POSTGRES_PASSWORD } }
+            - name: DATABASE_URL
+              value: postgresql+asyncpg://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@$(POSTGRES_HOST):5432/$(POSTGRES_DB)
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { cpu: 500m, memory: 256Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }

@@ -1,0 +1,29 @@
+# Local k3d cluster: images built on this machine and imported with
+# `k3d image import` (scripts/k8s-up.sh), simulated triage, sample data.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+images:
+  - name: civicpulse/backend
+    newTag: dev
+  - name: civicpulse/frontend
+    newTag: dev
+
+patches:
+  - target: { kind: ConfigMap, name: backend-config }
+    patch: |-
+      - op: replace
+        path: /data/ENVIRONMENT
+        value: development
+      - op: replace
+        path: /data/TRIAGE_PROVIDER
+        value: simulated
+  # Dev also loads the idempotent sample data, so the dashboard isn't empty.
+  - target: { kind: Job, name: migrate }
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/command
+        value: ["sh", "-c", "alembic upgrade head && python -m scripts.seed_db"]

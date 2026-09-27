@@ -1,0 +1,11 @@
+# Voluntary disruptions (a node drain, a cluster upgrade) must leave at least
+# one backend pod serving. Involuntary ones (a node crash) are what the second
+# replica and the spread across nodes are for.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: backend
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: { app.kubernetes.io/name: backend }
