@@ -7,3 +7,8 @@
 *.mp4 binary
 *.tar binary
 *.gz binary
+
+# Generated from the backend OpenAPI schema; collapsed in PR diffs
+frontend/openapi.json linguist-generated=true
+frontend/src/api/schema.d.ts linguist-generated=true
+frontend/package-lock.json linguist-generated=true
