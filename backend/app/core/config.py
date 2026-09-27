@@ -70,12 +70,17 @@ class Settings(BaseSettings):
     triage_timeout_seconds: float = 10.0
     # Base delay before the single retry; actual delay is jittered to 50–150%.
     triage_retry_base_seconds: float = 0.5
+    # Worker threads reserved for provider calls. A hung provider can tie up at
+    # most this many threads; the rest of the app keeps its own pool.
+    triage_max_concurrency: int = Field(default=16, ge=1)
     # SimulatedTriage only (CI/tests/demos); see app/providers/triage/simulated.py.
     simulated_seed: int = 42
     simulated_failure_mode: Literal[
         "none", "timeout", "rate_limited", "server_error", "bad_request", "error", "invalid"
     ] = "none"
     simulated_failure_rate: float = Field(default=1.0, ge=0.0, le=1.0)
+    # Artificial per-call delay for demos (loading state, SIGTERM drain, load tests).
+    simulated_latency_ms: int = Field(default=0, ge=0, le=60000)
     # SecretStr: repr/str/model_dump never reveal the key, so it cannot leak into logs.
     groq_api_key: SecretStr = SecretStr("")
     groq_base_url: str = "https://api.groq.com/openai/v1"

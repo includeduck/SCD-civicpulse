@@ -61,6 +61,7 @@ class TriageService:
         fallback: TriageProvider | None = None,
         sleep: Sleep = anyio.sleep,
         jitter: Jitter = random.uniform,
+        limiter: anyio.CapacityLimiter | None = None,
     ) -> None:
         self._provider = provider
         self._cache = cache
@@ -70,6 +71,9 @@ class TriageService:
         # Injected so tests exercise the retry path without real waiting.
         self._sleep = sleep
         self._jitter = jitter
+        # Provider calls get their own thread budget. Waiting for a slot counts
+        # against the deadline, so saturation degrades to fallback, not a hang.
+        self._limiter = limiter
 
     async def triage(self, complaint_id: uuid.UUID, text: str, location: str) -> TriageOutcome:
         started = time.perf_counter()
@@ -121,7 +125,11 @@ class TriageService:
         try:
             with anyio.fail_after(self._timeout):
                 result = await anyio.to_thread.run_sync(
-                    self._provider.triage, text, location, abandon_on_cancel=True
+                    self._provider.triage,
+                    text,
+                    location,
+                    abandon_on_cancel=True,
+                    limiter=self._limiter,
                 )
         except TimeoutError as exc:
             raise TriageTimeoutError(
