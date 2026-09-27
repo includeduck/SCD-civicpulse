@@ -384,6 +384,10 @@ export interface components {
         TriagedBy: "llm:groq" | "llm:ollama" | "rules" | "rules:fallback" | "simulated";
         /** ValidationError */
         ValidationError: {
+            /** Context */
+            ctx?: Record<string, never>;
+            /** Input */
+            input?: unknown;
             /** Location */
             loc: (string | number)[];
             /** Message */

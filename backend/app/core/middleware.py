@@ -55,6 +55,30 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
 logger = get_logger(__name__)
 
 
+def route_template(scope: Scope) -> str:
+    """The matched route's full template, e.g. "/api/complaints/{complaint_id}".
+
+    FastAPI (0.14x) wraps included routers, so the matched route's ``path`` is
+    relative to its router ("/complaints/{complaint_id}") and the outer
+    prefixes are missing. Fill the template with this request's path
+    parameters, and whatever comes before that in the real path is the prefix.
+    Nothing is hard-coded, and a route that already carries its full path
+    comes back unchanged.
+    """
+    route = scope.get("route")
+    template = getattr(route, "path", None)
+    if not template:
+        return "unmatched"
+    path = scope.get("path", "")
+    try:
+        concrete = getattr(route, "path_format", template).format(**scope.get("path_params", {}))
+    except (KeyError, IndexError, ValueError):
+        return template
+    if concrete and path.endswith(concrete):
+        return path[: len(path) - len(concrete)] + template
+    return template
+
+
 class RequestMetricsMiddleware:
     """Count, time and log every HTTP request (pure ASGI, so it sees the final status).
 
@@ -84,8 +108,7 @@ class RequestMetricsMiddleware:
             await self.app(scope, receive, send_wrapper)
         finally:
             elapsed = time.perf_counter() - started
-            route = scope.get("route")
-            endpoint = getattr(route, "path", None) or "unmatched"
+            endpoint = route_template(scope)
             method = scope["method"]
             REQUEST_COUNT.labels(
                 method=method, endpoint=endpoint, status_code=str(status_code)
