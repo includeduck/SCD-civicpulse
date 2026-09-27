@@ -145,8 +145,9 @@ cd ../frontend && npm run gen:api                # regenerates src/api/schema.d.
 | 8 | Frontend (React + Vite + TypeScript), typed API client, nginx `/api` proxy | ✅ Done |
 | 9 | Docker Compose, networks, volumes, image hardening | ✅ Done |
 | 10 | Automated test strategy: coverage floors, random order, traceability ([TESTING.md](docs/TESTING.md)) | ✅ Done |
-| 11 | Kubernetes base and dev overlay | ⏳ Next |
-| 12–15 | Scaling, CI/CD, documentation | 🔜 Planned |
+| 11 | Kubernetes: Kustomize base and overlays, k3d, probes, zero-downtime rollouts | ✅ Done |
+| 12 | HPA tuning, VPA, load test | ⏳ Next |
+| 13–15 | CI/CD, documentation | 🔜 Planned |
 
 See [CivicPulse_ImplementationPlan.md](CivicPulse_ImplementationPlan.md) for the full plan.
 
@@ -172,13 +173,32 @@ Invalid input returns `400` with field-level errors. Invalid status transitions 
 
 ## Kubernetes (local)
 
-> **Not available yet** — manifests and `scripts/k8s-up.sh` arrive in Phases 11–12.
+Needs Docker, [k3d](https://k3d.io) v5 and `kubectl`. One command creates a three-node cluster, builds and imports both images, runs the migrations and deploys everything:
 
 ```bash
-# Requires k3d or kind installed
-./scripts/k8s-up.sh          # create cluster + deploy
-kubectl -n civicpulse get all
+bash scripts/k8s-up.sh                 # about 4 minutes from nothing
+# open http://civicpulse.localhost:8081
+kubectl -n civicpulse get pods
+k3d cluster delete civicpulse          # remove it all
 ```
+
+Manifests use Kustomize: `k8s/base/` plus `k8s/overlays/dev` (local images, simulated triage, sample data) and `k8s/overlays/prod` (GHCR images pinned to a commit SHA, Groq, no committed Secret).
+
+| Object | What and why |
+|--------|--------------|
+| `Namespace` | Everything in `civicpulse`; Pod Security `baseline` enforced, `restricted` warned (all our pods meet `restricted`) |
+| `StatefulSet` postgres | `volumeClaimTemplates` → its own PVC; deleting `postgres-0` loses nothing |
+| `Deployment` + `PVC` redis | AOF on the volume; `Recreate` strategy because the volume is ReadWriteOnce |
+| `Deployment` backend ×2, frontend ×2 | Rolling updates with `maxSurge: 1`, `maxUnavailable: 0`, a preStop sleep and a grace period; spread across nodes |
+| `Job` migrate | Migrations once per deploy; backend pods wait for the schema in an initContainer |
+| `Service` ×4 | All `ClusterIP`; nothing exposed on a node port |
+| `Ingress` | One host: `/api/` → backend, `/` → frontend |
+| `ConfigMap` / `Secret` | Configuration vs credentials; the committed Secret holds placeholders only |
+| `NetworkPolicy` | Postgres and Redis accept only the backend (and the migrate Job) |
+| `PodDisruptionBudget` | `minAvailable: 1` on the backend |
+| `HorizontalPodAutoscaler` | Backend, 2–10 replicas at 60 % CPU |
+
+Evidence captured on the running cluster: [network isolation](docs/evidence/k8s-network-isolation.txt), [liveness vs readiness with the database down](docs/evidence/k8s-probes.txt), and a [zero-downtime rollout under load](docs/evidence/k8s-zero-downtime-rollout.txt) (11,807 requests, 0 failed).
 
 ---
 

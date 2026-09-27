@@ -1,0 +1,34 @@
+# Network isolation proof — Kubernetes (k3d, NetworkPolicy in k8s/base/network-policy.yaml), 2026-09-27T16:31Z
+# k3s v1.35.5+k3s1; frontend=pod/frontend-6c5d86b596-88wrf backend=pod/backend-579cc44596-6gwcm postgres-0=10.42.1.13
+
+## 1. The frontend cannot reach the data stores (must fail)
+$ kubectl -n civicpulse exec pod/frontend-6c5d86b596-88wrf -- nc -z -w 3 postgres 5432
+command terminated with exit code 1
+(exit 1)
+
+$ kubectl -n civicpulse exec pod/frontend-6c5d86b596-88wrf -- nc -z -w 3 10.42.1.13 5432
+command terminated with exit code 1
+(exit 1)
+
+$ kubectl -n civicpulse exec pod/frontend-6c5d86b596-88wrf -- nc -z -w 3 redis 6379
+command terminated with exit code 1
+(exit 1)
+
+## 2. Positive controls (must succeed)
+$ kubectl -n civicpulse exec pod/frontend-6c5d86b596-88wrf -- nc -z -w 3 backend 8000
+(exit 0)
+
+$ kubectl -n civicpulse exec pod/backend-579cc44596-6gwcm -c backend -- python -c import socket; socket.create_connection(('postgres', 5432), timeout=3); print('backend -> postgres:5432 open')
+backend -> postgres:5432 open
+(exit 0)
+
+$ kubectl -n civicpulse exec pod/backend-579cc44596-6gwcm -c backend -- python -c import socket; socket.create_connection(('redis', 6379), timeout=3); print('backend -> redis:6379 open')
+backend -> redis:6379 open
+(exit 0)
+
+## 3. Services: all ClusterIP, nothing exposed on a node port
+NAME       TYPE        PORTS
+backend    ClusterIP   8000
+frontend   ClusterIP   8080
+postgres   ClusterIP   5432
+redis      ClusterIP   6379

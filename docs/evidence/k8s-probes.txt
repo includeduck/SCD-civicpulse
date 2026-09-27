@@ -1,0 +1,20 @@
+# Probes: liveness vs readiness when the database goes away — 2026-09-27T16:32Z
+
+## Before
+6gwcm ready=1/1 restarts=0 | sxrm9 ready=1/1 restarts=0 | 
+
+$ kubectl -n civicpulse scale statefulset/postgres --replicas=0
+## 15 s after Postgres is gone
+6gwcm ready=0/1 restarts=0 | sxrm9 ready=0/1 restarts=0 | 
+GET /ready (backend pod, direct): 503 {"status":"not_ready","dependencies":{"database":{"status":"failed","error":"ConnectionRefusedError"},"redis":{"status":"ok"}}}
+GET /health (backend pod, direct): 200 {"status":"ok","app":"CivicPulse","version":"0.1.0"}
+GET /api/stats via Ingress: 503  (no ready backend endpoints)
+Service endpoints: false false 
+
+## 45 s without Postgres: still no restarts (liveness never touched the DB)
+6gwcm ready=0/1 restarts=0 | sxrm9 ready=0/1 restarts=0 | 
+
+$ kubectl -n civicpulse scale statefulset/postgres --replicas=1
+## After Postgres returns
+6gwcm ready=1/1 restarts=0 | sxrm9 ready=1/1 restarts=0 | 
+GET /api/stats via Ingress: 200

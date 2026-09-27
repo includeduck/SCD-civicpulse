@@ -1,0 +1,24 @@
+# One host; /api to the backend, everything else to the frontend. The app
+# only ever calls relative /api/... paths (ADR 0002), so the browser's calls
+# land on the backend Service with no URL configured anywhere.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: civicpulse
+spec:
+  rules:
+    - host: civicpulse.localhost
+      http:
+        paths:
+          # "/api/", with the slash: the spec says Prefix matches whole path
+          # segments, but Traefik implements it as a plain string prefix, so
+          # "/api" also sent /apiary to the backend (found on 2026-09-27).
+          # The app only calls /api/..., so nothing needs the bare "/api".
+          - path: /api/
+            pathType: Prefix
+            backend:
+              service: { name: backend, port: { name: http } }
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: frontend, port: { name: http } }
