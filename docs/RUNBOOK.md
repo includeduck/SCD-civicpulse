@@ -44,7 +44,13 @@ kubectl -n civicpulse wait --for=condition=complete job/migrate --timeout=300s
 kubectl -n civicpulse rollout status deploy/backend
 ```
 
-**Production overlay:** CD (Phase 14) creates the Secret from GitHub Secrets, then pins the images to the commit SHA before applying:
+**Production overlay:** `scripts/cd_deploy.sh` does all of it, and is exactly what CD runs. It creates the Secret (the database password, and `GROQ_API_KEY` from GitHub Secrets if set; without a key it deploys with `TRIAGE_PROVIDER=rules`), pins the images to the commit SHA and digest, applies the prod overlay, and smoke-tests through the Ingress:
+
+```bash
+IMAGE_SHA=$(git rev-parse HEAD) bash scripts/cd_deploy.sh   # images for that SHA must be in GHCR or imported
+```
+
+The steps it performs, for reference:
 
 ```bash
 kubectl -n civicpulse create secret generic backend-secrets   --from-literal=POSTGRES_PASSWORD=... --from-literal=GROQ_API_KEY=...   --dry-run=client -o yaml | kubectl apply -f -
@@ -72,12 +78,26 @@ Start from a quiet cluster (HPA at 2 replicas), otherwise the lag numbers are me
 
 ## Rollback
 
+Two ways; both are demonstrated in `docs/evidence/k8s-rollback.txt`, and ADR 0003 says when to use which.
+
+**Fast and imperative (the 3 a.m. answer):** the previous ReplicaSet is still there.
+
 ```bash
-kubectl -n civicpulse rollout undo deployment/backend     # fast: back to the previous ReplicaSet
-kubectl -n civicpulse rollout history deployment/backend  # what's available (revisionHistoryLimit: 5)
+kubectl -n civicpulse rollout undo deployment/backend
+kubectl -n civicpulse rollout status deployment/backend
+kubectl -n civicpulse rollout history deployment/backend   # revisionHistoryLimit: 5
 ```
 
-The declarative rollback, re-applying the previous commit's SHA through the prod overlay, arrives with CD in Phase 14.
+⚠️ This changes the cluster, not Git: the next declarative apply would put the bad build back. Once the fire is out, finish with the declarative way.
+
+**Declarative (the auditable answer):** deploy the previous build by its SHA.
+
+```bash
+git log --oneline origin/main              # pick the last good commit
+IMAGE_SHA=<full sha of that commit> bash scripts/cd_deploy.sh
+```
+
+On GitHub, re-running the CD workflow for that commit does the same thing, and leaves a record of who rolled back what, and when.
 
 ---
 

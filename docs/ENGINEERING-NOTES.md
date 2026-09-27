@@ -22,13 +22,23 @@ All three are differences we actually hit.
 
 ## Q2 — Where your pipeline sits on the CI/CD maturity ladder (Lecture 03, slide 32); justify the rung, name the next rung and what it buys
 
-*TODO (Phases 13–14).*
+*TODO (team): place us on the rungs as the lecture names them. We don't have slide 32, so the rung names are yours to supply; don't let us invent them. The facts to map onto it:*
+
+- **Every change is integrated and gated.** PRs into `dev`/`main` need nine green CI checks and one approval (`.github/workflows/ci.yml`, ruleset 23347090). The gate demonstrably blocks merges (`docs/evidence/ci-gate.md`).
+- **Every push to `main` is re-tested, published and deployed automatically** (`.github/workflows/cd.yml`): the full CI suite on the merged code, images pushed to GHCR by SHA with an SBOM, then deployed to a throwaway k3d cluster and smoke-tested through the Ingress. No human step between merge and a verified deployment.
+- **Not yet:** the deploy target is ephemeral, created inside the CI runner, not a long-lived environment users reach. There's no staged promotion (staging → production) and no automated rollback on a failed smoke test; rollback is a person running one of two commands (RUNBOOK, "Rollback").
+- So "continuous delivery to an ephemeral environment" is the honest description. The next step up is continuous deployment to a persistent environment with automated rollback, e.g. a GitOps controller (Argo CD or Flux) syncing `overlays/prod` and reverting when health checks fail. That buys an audited, self-healing production whose state is always exactly what Git says.
 
 ---
 
 ## Q3 — The exact line guaranteeing build-once-deploy-many, and what breaks without it
 
-*TODO (Phases 8, 14): the frontend runtime-configuration line (ADR 0002) and the deploy-by-SHA image reference (ADR 0003).*
+Two lines together, one per half of the promise.
+
+1. **Built once, per commit.** `.github/workflows/cd.yml:71` tags the image `${{ env.REGISTRY }}/backend:${{ github.sha }}`, and `cd.yml:151` passes that same `IMAGE_SHA: ${{ github.sha }}` to the deploy. The deploy never builds: `scripts/cd_deploy.sh:69` pins the prod overlay to `newTag: "$IMAGE_SHA"`, plus the pushed digest, so what runs is `<image>:<sha>@sha256:…`, the exact bytes that passed CI's Trivy scan and tests.
+2. **One image for every environment.** The frontend bundle contains no environment-specific value: there is no `import.meta.env` anywhere in `frontend/src`, and the only per-environment setting is `frontend/nginx/default.conf.template:28`, `proxy_pass ${BACKEND_URL};`, filled in when the container starts (ADR 0002). The backend reads all configuration from its environment.
+
+**What breaks without it.** If each environment rebuilt its own image (or baked in its own API URL), the bytes tested in CI would not be the bytes running in production; a dependency could resolve differently between the two builds. "What is production running?" would have no exact answer. Rolling back would mean rebuilding an old commit and hoping it builds the same. With `:latest` instead of a SHA it's worse still: the tag moves under you, so a rollback to `:latest` rolls *forward* to whatever was pushed last (ADR 0003).
 
 ---
 

@@ -3,7 +3,7 @@
 > **CS4032 Software Construction and Design — Assignment 01**
 
 [![CI](https://github.com/includeduck/SCD-civicpulse/actions/workflows/ci.yml/badge.svg?branch=dev)](https://github.com/includeduck/SCD-civicpulse/actions/workflows/ci.yml)
-<!-- The CD badge is added in Phase 14 with cd.yml. -->
+[![CD](https://github.com/includeduck/SCD-civicpulse/actions/workflows/cd.yml/badge.svg?branch=main)](https://github.com/includeduck/SCD-civicpulse/actions/workflows/cd.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 ## Problem Statement
@@ -149,8 +149,8 @@ cd ../frontend && npm run gen:api                # regenerates src/api/schema.d.
 | 11 | Kubernetes: Kustomize base and overlays, k3d, probes, zero-downtime rollouts | ✅ Done |
 | 12 | HPA under load, VPA recommender loop, k6 load test ([results](docs/evidence/load/README.md)) | ✅ Done |
 | 13 | CI: lint and types, tests with PostgreSQL, image build, Trivy, kubeconform, Compose integration | ✅ Done |
-| 14 | CD: GHCR by SHA, deploy to an ephemeral cluster, rollback | ⏳ Next |
-| 15 | Documentation and submission | 🔜 Planned |
+| 14 | CD: GHCR by SHA and digest, SBOM, deploy to an ephemeral cluster, rollback, releases | ✅ Done (first live run on the next merge to `main`) |
+| 15 | Documentation, submission checker, video | ⏳ Next |
 
 See [CivicPulse_ImplementationPlan.md](CivicPulse_ImplementationPlan.md) for the full plan.
 
@@ -171,6 +171,20 @@ See [CivicPulse_ImplementationPlan.md](CivicPulse_ImplementationPlan.md) for the
 | `integration` | `scripts/ci_integration.sh`: Compose up, `/ready`, POST a complaint and GET it back, `X-Cache` MISS → HIT, the frontend can't reach the database, `down -v` |
 
 Every action is pinned to a commit SHA, and Trivy and kubeconform run from images pinned by digest. The workflow has read-only permissions.
+
+---
+
+## Continuous Delivery
+
+`.github/workflows/cd.yml` runs on every push to `main`: **test → build-push → deploy-k8s**, each stage gated on the one before by `needs:`.
+
+| Job | What it does |
+|-----|--------------|
+| `test` | The whole CI workflow again, on the merged code |
+| `build-push` | Pushes both images to GHCR as `:<commit sha>` (and `:latest`, never deployed), with `GITHUB_TOKEN` only; an SPDX SBOM per image (Syft); the digests as job outputs |
+| `deploy-k8s` | A throwaway k3d cluster; the prod overlay pinned to `<image>:<sha>@<digest>`; migrations; `rollout status`; a smoke test through the Ingress (`/`, `/api/stats`, POST then GET a complaint); `kubectl get hpa` |
+
+`release.yml` publishes semantic-version tags and a GitHub Release when a `v*` tag is pushed. Rollback, both ways, is in the [runbook](docs/RUNBOOK.md#rollback) and [ADR 0003](docs/adr/0003-deploy-by-sha.md).
 
 ---
 
