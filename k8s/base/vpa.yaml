@@ -1,0 +1,25 @@
+# Vertical Pod Autoscaler in recommender mode: it measures the backend and
+# *recommends* requests, but never changes them. A human reads
+# `kubectl describe vpa backend-vpa` and updates backend.yaml.
+#
+# Why not "Auto": the HPA scales on CPU utilisation = usage / request. VPA in
+# Auto would raise the CPU request, which lowers utilisation, so the HPA
+# scales in; fewer pods means more load per pod, so VPA raises the request
+# again. The two controllers act on the same signal and fight
+# (docs/ENGINEERING-NOTES.md, Q6).
+# Needs the VPA CRDs and recommender: `kubectl apply -k k8s/k3d/vpa`.
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: backend-vpa
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: backend
+  updatePolicy:
+    updateMode: "Off"
+  resourcePolicy:
+    containerPolicies:
+      - containerName: backend
+        controlledResources: [cpu, memory]
