@@ -11,15 +11,19 @@ on:
     branches: [main, dev]
   push:
     branches: [dev]
+  # cd.yml and release.yml call this whole workflow as their "test" stage, so
+  # what gets published has passed the same suite, on the merged code.
+  workflow_call:
 
 # Least privilege: the jobs only read the repository.
 permissions:
   contents: read
 
-# A newer push to the same branch or PR supersedes the running one.
+# A newer push to the same PR supersedes the running one. Pushes and calls
+# from CD are never cancelled halfway: every commit on dev and main gets a result.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.head_ref || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # `shell: bash` makes every step run with `-eo pipefail`. GitHub's default
 # omits pipefail, so `kustomize build | kubeconform` passed while kustomize was
