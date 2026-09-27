@@ -14,12 +14,12 @@ export function validate(values: Values): FieldErrors {
   const text = values.text.trim();
   const location = values.location.trim();
   if (text.length < LIMITS.text.min) errors.text = `Please describe the problem in at least ${LIMITS.text.min} characters.`;
-  else if (text.length > LIMITS.text.max) errors.text = `Please keep it under ${LIMITS.text.max} characters.`;
+  else if (text.length > LIMITS.text.max) errors.text = `Please keep it to at most ${LIMITS.text.max} characters.`;
   if (location.length < LIMITS.location.min)
     errors.location = `Please give a location of at least ${LIMITS.location.min} characters.`;
   else if (location.length > LIMITS.location.max)
-    errors.location = `Please keep the location under ${LIMITS.location.max} characters.`;
+    errors.location = `Please keep the location to at most ${LIMITS.location.max} characters.`;
   if (values.reporter_contact.trim().length > LIMITS.contact.max)
-    errors.reporter_contact = `Please keep contact details under ${LIMITS.contact.max} characters.`;
+    errors.reporter_contact = `Please keep contact details to at most ${LIMITS.contact.max} characters.`;
   return errors;
 }

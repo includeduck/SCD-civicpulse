@@ -76,4 +76,25 @@ describe("Stats page", () => {
     expect(await within(panel).findByText("ollama")).toBeInTheDocument();
     expect(panel).toHaveTextContent("75%");
   });
+
+  it("keeps the last numbers on screen and shows the server's reason when a refresh fails", async () => {
+    const fetchMock = mockFetch();
+    let statsCalls = 0;
+    fetchMock.mockImplementation(async (input) => {
+      if (String(input) === "/api/meta/providers") return jsonResponse(PROVIDERS);
+      statsCalls += 1;
+      if (statsCalls === 1) return jsonResponse(STATS, { headers: { "X-Cache": "MISS" } });
+      return jsonResponse({ detail: "Database unavailable", code: "internal_error" }, { status: 503 });
+    });
+    const user = userEvent.setup();
+    renderAt(<StatsPage />, "/stats");
+
+    await screen.findByRole("region", { name: "By category" });
+    await user.click(screen.getByRole("button", { name: "Refresh" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Could not load statistics");
+    expect(alert).toHaveTextContent("Database unavailable");
+    expect(within(screen.getByRole("region", { name: "Totals" })).getByText("12")).toBeInTheDocument();
+  });
 });
