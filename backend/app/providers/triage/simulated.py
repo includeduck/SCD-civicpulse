@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import hashlib
 import time
+from collections.abc import Callable
 from typing import Literal
 
 from app.providers.triage.base import (
@@ -65,6 +66,7 @@ class SimulatedTriage:
         failure_mode: FailureMode = "none",
         failure_rate: float = 1.0,
         latency_ms: int = 0,
+        sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         if not 0.0 <= failure_rate <= 1.0:
             raise ValueError("failure_rate must be between 0.0 and 1.0")
@@ -76,6 +78,7 @@ class SimulatedTriage:
         # Demo-only delay, like a real model's inference time. Runs in the
         # provider's worker thread, so it never blocks the event loop.
         self.latency_ms = latency_ms
+        self._sleep = sleep  # injectable, so tests check the delay without waiting for it
         self._rules = RuleBasedTriage()
 
     def _fraction(self, text: str, location: str, salt: str) -> float:
@@ -90,7 +93,7 @@ class SimulatedTriage:
 
     def triage(self, text: str, location: str) -> TriageResult:
         if self.latency_ms:
-            time.sleep(self.latency_ms / 1000)
+            self._sleep(self.latency_ms / 1000)
         if self.should_fail(text, location):
             if self.failure_mode == "invalid":
                 # What a misbehaving model looks like: out-of-enum category,

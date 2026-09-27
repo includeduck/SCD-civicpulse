@@ -188,10 +188,22 @@ async def test_saturated_triage_pool_degrades_to_fallback_not_a_hang():
     assert outcome.triaged_by == "rules:fallback"
 
 
-def test_simulated_latency_is_applied_in_the_worker_thread():
-    import time
+async def test_simulated_latency_is_applied_in_a_worker_thread_not_the_event_loop():
+    """The demo delay must run in the provider's thread; the event loop stays free.
 
-    provider = SimulatedTriage(latency_ms=30)
-    started = time.perf_counter()
-    provider.triage("Pipe burst on main road", "F-8")
-    assert time.perf_counter() - started >= 0.03
+    The sleep is injected, so the test checks the delay and where it ran
+    without actually waiting for it.
+    """
+    slept: list[tuple[float, bool]] = []
+    main_thread = threading.main_thread()
+
+    def fake_sleep(seconds: float) -> None:
+        slept.append((seconds, threading.current_thread() is main_thread))
+
+    provider = SimulatedTriage(latency_ms=2500, sleep=fake_sleep)
+    service = TriageService(provider, RedisTriageCache(FakeAsyncRedis(), ttl_seconds=60))
+
+    outcome = await service.triage(uuid.uuid4(), "Pipe burst on main road", "F-8")
+
+    assert slept == [(2.5, False)]  # 2.5 s requested, off the main (event-loop) thread
+    assert outcome.triaged_by == "simulated"

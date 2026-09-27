@@ -31,6 +31,7 @@ dev = [
     "types-redis==4.6.0.20241004",
     "aiosqlite>=0.20.0",
     "fakeredis==2.26.2",  # in-memory Redis for cache tests; no server in unit tests
+    "pytest-randomly==3.16.0",  # random test order every run, to expose hidden coupling
 ]
 
 [build-system]
@@ -63,10 +64,19 @@ ignore_missing_imports = true
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
-addopts = "--cov=app --cov-report=term-missing -q"
+addopts = "--cov=app --cov-report=term-missing"
+# pytest-randomly shuffles test order each run and prints the seed; reproduce
+# an order-dependent failure with `pytest -p randomly --randomly-seed=<seed>`.
 
 [tool.coverage.run]
 # SQLAlchemy async runs code in greenlets and providers run in a threadpool;
 # without this, lines that do execute are reported as missed.
 concurrency = ["greenlet", "thread"]
 omit = ["tests/*", "alembic/*"]
+
+[tool.coverage.report]
+# The brief requires >= 65 % of app/. We're at 98 %, so the floor sits well
+# above the minimum: a PR that adds untested code fails here, not at the viva.
+fail_under = 90
+show_missing = true
+skip_covered = true
