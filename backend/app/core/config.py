@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     # Read as a plain string: pydantic-settings JSON-decodes list fields from env,
     # which rejects the comma-separated form used in .env.example.
     allowed_origins_csv: str = Field(
-        default="http://localhost:3000,http://localhost:5173",
+        default="http://localhost:5173",  # the Vite dev server
         validation_alias="ALLOWED_ORIGINS",
     )
 

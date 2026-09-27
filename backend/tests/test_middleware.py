@@ -34,7 +34,7 @@ def test_cors_headers_exposed(client: TestClient):
     response = client.options(
         "/health",
         headers={
-            "Origin": "http://localhost:3000",
+            "Origin": "http://localhost:5173",
             "Access-Control-Request-Method": "GET",
         },
     )
