@@ -58,6 +58,18 @@ kubectl apply -k k8s/overlays/prod
 | Backend `0/1` but not restarting | Readiness failing, i.e. PostgreSQL or Redis unreachable; `kubectl -n civicpulse exec deploy/backend -- python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/ready').read())"` names it. This is the designed behaviour: see `docs/evidence/k8s-probes.txt` |
 | Everyone gets `429` at once | The limiter keys on the client address Traefik records; see `k8s/k3d/traefik-config.yaml` |
 
+## Load test and autoscaling
+
+```bash
+bash load/run-load-test.sh my-run             # about 14 min: 400 s of load, then 7 min watching scale-in
+cat docs/evidence/load/my-run/summary.md      # lag table; chart.svg next to it
+kubectl -n civicpulse get hpa backend -w      # live
+kubectl -n civicpulse describe vpa backend-vpa  # the recommended requests (never applied automatically)
+kubectl top pods -n civicpulse
+```
+
+Start from a quiet cluster (HPA at 2 replicas), otherwise the lag numbers are meaningless. k6 runs from the `grafana/k6` image on the cluster's Docker network, so nothing is installed on the host. To act on a VPA recommendation, change `resources.requests` in `k8s/base/backend.yaml` in a PR, never in the cluster directly.
+
 ## Rollback
 
 ```bash

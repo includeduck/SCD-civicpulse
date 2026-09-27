@@ -146,8 +146,9 @@ cd ../frontend && npm run gen:api                # regenerates src/api/schema.d.
 | 9 | Docker Compose, networks, volumes, image hardening | ✅ Done |
 | 10 | Automated test strategy: coverage floors, random order, traceability ([TESTING.md](docs/TESTING.md)) | ✅ Done |
 | 11 | Kubernetes: Kustomize base and overlays, k3d, probes, zero-downtime rollouts | ✅ Done |
-| 12 | HPA tuning, VPA, load test | ⏳ Next |
-| 13–15 | CI/CD, documentation | 🔜 Planned |
+| 12 | HPA under load, VPA recommender loop, k6 load test ([results](docs/evidence/load/README.md)) | ✅ Done |
+| 13 | CI (`ci.yml`) | ⏳ Next |
+| 14–15 | CD, release, documentation | 🔜 Planned |
 
 See [CivicPulse_ImplementationPlan.md](CivicPulse_ImplementationPlan.md) for the full plan.
 
@@ -196,7 +197,10 @@ Manifests use Kustomize: `k8s/base/` plus `k8s/overlays/dev` (local images, simu
 | `ConfigMap` / `Secret` | Configuration vs credentials; the committed Secret holds placeholders only |
 | `NetworkPolicy` | Postgres and Redis accept only the backend (and the migrate Job) |
 | `PodDisruptionBudget` | `minAvailable: 1` on the backend |
-| `HorizontalPodAutoscaler` | Backend, 2–10 replicas at 60 % CPU |
+| `HorizontalPodAutoscaler` | Backend, 2–10 replicas at 60 % CPU; scale up at once, scale down after 5 min |
+| `VerticalPodAutoscaler` | Backend, `updateMode: "Off"`: recommends requests, never changes them |
+
+**Autoscaling under load.** `bash load/run-load-test.sh <name>` runs a k6 step load (5 → 120 req/s) and captures `kubectl get hpa -w`, the lag and a replicas-vs-load chart. Measured: the HPA reacts in about 40 s and new capacity is Ready in about 55 s. The backend's requests (`182m` / `250Mi`) come from the VPA's recommendation, not from a guess: see [the before and after comparison](docs/evidence/load/README.md).
 
 Evidence captured on the running cluster: [network isolation](docs/evidence/k8s-network-isolation.txt), [liveness vs readiness with the database down](docs/evidence/k8s-probes.txt), and a [zero-downtime rollout under load](docs/evidence/k8s-zero-downtime-rollout.txt) (11,807 requests, 0 failed).
 

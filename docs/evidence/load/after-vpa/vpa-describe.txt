@@ -1,0 +1,46 @@
+Name:         backend-vpa
+Namespace:    civicpulse
+Labels:       app.kubernetes.io/part-of=civicpulse
+Annotations:  <none>
+API Version:  autoscaling.k8s.io/v1
+Kind:         VerticalPodAutoscaler
+Metadata:
+  Creation Timestamp:  2026-09-27T17:02:49Z
+  Generation:          1
+  Resource Version:    4160
+  UID:                 8dd6569e-ba39-4fd2-8f3e-ddd5826d22d7
+Spec:
+  Resource Policy:
+    Container Policies:
+      Container Name:  backend
+      Controlled Resources:
+        cpu
+        memory
+  Target Ref:
+    API Version:  apps/v1
+    Kind:         Deployment
+    Name:         backend
+  Update Policy:
+    Update Mode:  Off
+Status:
+  Conditions:
+    Last Transition Time:  2026-09-27T17:03:36Z
+    Status:                True
+    Type:                  RecommendationProvided
+  Observed Generation:     1
+  Recommendation:
+    Container Recommendations:
+      Container Name:  backend
+      Lower Bound:
+        Cpu:     25m
+        Memory:  250Mi
+      Target:
+        Cpu:     182m
+        Memory:  250Mi
+      Uncapped Target:
+        Cpu:     182m
+        Memory:  250Mi
+      Upper Bound:
+        Cpu:     14472m
+        Memory:  5369235198
+Events:          <none>

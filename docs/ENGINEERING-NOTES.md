@@ -45,13 +45,52 @@ Whether the category is *semantically* right is a quality metric, not a correctn
 
 ## Q5 — Your HPA lag: seconds between offered load rising and replicas rising; where did the time go, and what would reduce it?
 
-*TODO (Phase 12): measure from a real `kubectl get hpa -w` capture during the k6 run.*
+**Measured** (`docs/evidence/load/`; k6 offering a step from 5 to 120 req/s at t = 60 s):
+
+- The HPA raised its desired replicas **36–40 s** after the load arrived.
+- The first extra pod was Ready (capacity actually arriving) after **51–55 s**.
+- All 10 pods were Ready after **70–96 s**.
+
+**Where the time went**, from the timestamped `kubectl get hpa -w` in `docs/evidence/load/before-vpa/hpa-watch.txt`:
+
+1. **The ramp itself (20 s)**: the load reached full rate at t = 80 s.
+2. **Measurement (≈15 s)**: metrics-server samples every 15 s (`--metric-resolution=15s` in k3s), and CPU is averaged over that window. The HPA's reading went 21 % → 179 % only at 17:06:56, 15 s after the load was at full rate.
+3. **Decision (≤15 s)**: the HPA controller syncs every 15 s, and its default scale-up policy caps each step (at most +4 pods or +100 % per 15 s). So it went 2 → 6 first, and 6 → 10 one sync later, not straight to 10.
+4. **Pod start (≈15 s)**: scheduling, container start, the `wait-for-schema` initContainer, Python start-up, then the first successful readiness probe (every 5 s).
+
+Meanwhile the first two pods absorbed the whole load. The HPA read **500 %**, which is exactly our limit ÷ request (500m ÷ 100m): those pods were throttled at their CPU limit. That's where the 3.2 s p99 of the first run came from. The lag is the reason autoscaling isn't a substitute for capacity planning: for about a minute, the capacity you have is the capacity you planned.
+
+**What would reduce it:**
+
+- A higher `minReplicas` or headroom for known peaks (capacity planning).
+- A shorter metric resolution.
+- A scale-up policy that allows bigger first steps (`behavior.scaleUp.policies`).
+- Faster pod start (smaller image, readiness on first success).
+- Scaling on a *leading* signal such as request rate or queue depth through custom metrics (e.g. KEDA), rather than CPU, which only rises once the pods are already struggling.
 
 ---
 
 ## Q6 — Why VPA is in Off mode; describe the failure mode of running it in Auto alongside your HPA
 
-*TODO (Phase 12).*
+The HPA scales on CPU utilisation, and **utilisation is usage divided by the CPU request**. VPA in Auto *changes that request*. So the two controllers act on the same number from opposite ends:
+
+1. VPA sees high usage and raises the request.
+2. Utilisation drops, so the HPA scales *in*.
+3. Fewer pods means more load per pod.
+4. VPA sees higher usage and raises the request again.
+5. Every VPA change evicts pods to apply it, which is a disruption in itself.
+
+The replica count ends up moving with *VPA's* decisions, not with traffic.
+
+**Our own data shows the lever is real.** Changing only the request from 100m to VPA's recommended 182m, under identical load, changed the HPA's reading at 10 pods from 62–68 % (above target, pinned at `maxReplicas`) to 36–40 %. Its desired count went from "more than 10" to about 7, and it scaled in 160 s earlier (`docs/evidence/load/README.md`). If VPA in Auto had made that change by itself mid-traffic, the HPA would have removed three pods with no change in load at all.
+
+**So we run VPA as a recommender:**
+
+- `updateMode: "Off"` in `k8s/base/vpa.yaml`.
+- Only the recommender is installed; no updater or admission controller (`k8s/k3d/vpa/kustomization.yaml`).
+- A human applied its target once, as a deliberate reviewed change: `backend.yaml` now requests `182m` / `250Mi` instead of our guessed `100m` / `128Mi`.
+
+Recommender mode plus a human decision is what industry does for exactly this reason.
 
 ---
 

@@ -15,7 +15,7 @@
 | Tool | Used by | Period | For |
 |------|---------|--------|-----|
 | **Antigravity** (Google DeepMind) | team | Phase 0, and likely Phases 1–2 (*team to confirm*) | Repository scaffold, docs stubs, initial FastAPI skeleton, model, migration and seed |
-| **Claude Code** (Anthropic, Claude Opus model), desktop app | repository owner | 2026-09-26 onwards | Plan review, defect fixes, Phases 3–11 implementation, tests, docs, GitHub Issues and PR descriptions, verification runs |
+| **Claude Code** (Anthropic, Claude Opus model), desktop app | repository owner | 2026-09-26 onwards | Plan review, defect fixes, Phases 3–12 implementation, tests, docs, GitHub Issues and PR descriptions, verification runs |
 | *AI assistant used to draft PR reviews* | reviewer | from PR #15 | *Team to name the tool.* The review bodies on #15, #17, #19, #21 are AI-generated reports; they link to local `file:///` paths |
 
 ---
@@ -34,6 +34,7 @@
 | Prompt-injection guard | Found the in-enum injection weakness during the live Ollama run, wrote `injection.py` (detection before the model), the service change and `test_triage_injection.py`, and re-verified live | Owner chose to fix it (rather than only document it) after reviewing the Phase 9 findings. *Team to review the pattern list and its false-positive trade-off* |
 | Phase 10 test strategy | Audited the suites against the brief and plan, wrote `docs/TESTING.md` (layers, determinism, requirement-to-test traceability), added coverage floors and random test order, replaced the one real-sleep test with an injected sleep, added frontend boundary and error-state tests, and stress-ran both suites | Owner asked for Phase 10. *Team to be ready to explain the determinism table at the viva* |
 | Phase 11 Kubernetes | Wrote the Kustomize base and overlays, the k3d cluster config, the Traefik config, `wait_for_schema.py`, `scripts/k8s-up.sh` and `scripts/zero_downtime_check.py`; found and fixed a migrate-Job race and the per-node client-IP rate-limit bug; captured the evidence files | Owner chose k3d and approved installing it. *Team to be able to explain StatefulSet vs Deployment and liveness vs readiness at the viva (ENGINEERING-NOTES, "Kubernetes decisions")* |
+| Phase 12 autoscaling | Wrote the k6 script (arrival-rate), the HPA sampler, the run and analysis scripts (lag table and SVG chart), the VPA object and pinned recommender install; ran both load tests, applied the VPA target, and wrote Q5 and Q6 from the measurements | Owner asked for Phase 12. *Team to be able to explain the lag breakdown and the HPA/VPA conflict in their own words at the viva* |
 | Verification | Ran the tests against real PostgreSQL 16 and Redis 7 in Docker, a two-replica rate-limit check, the AOF restart check and the SIGTERM drain check, and a browser run of the frontend image against the real stack (submit, 409, X-Cache MISS→HIT); stress-ran the suite to find a flaky test | Owner started Docker and installed Python 3.12 when asked |
 | Docs | TRIAGE.md, RUNBOOK.md, ADR 0001 and 0004 updates, the engineering-notes restructure, the README, this file | *Team to review wording and add their own reflections* |
 
