@@ -87,7 +87,7 @@ services:
   backend:
     <<: *backend-build
     restart: unless-stopped
-    env_file: .env
+    env_file: ${ENV_FILE:-.env}   # CI points this at its own file; see scripts/ci_integration.sh
     environment:
       <<: *backend-env
       # Trust X-Forwarded-For only from the frontend's nginx (its fixed address
