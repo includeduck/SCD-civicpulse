@@ -35,16 +35,37 @@ docker compose -f compose.prod.yaml up -d --wait
 
 ## Deploy (Kubernetes)
 
+**Local (k3d):** `bash scripts/k8s-up.sh`, which is safe to re-run. To deploy by hand:
+
 ```bash
-# TODO: Phase 11
+kubectl -n civicpulse delete job migrate --ignore-not-found   # a Job's template is immutable
+kubectl apply -k k8s/overlays/dev
+kubectl -n civicpulse wait --for=condition=complete job/migrate --timeout=300s
+kubectl -n civicpulse rollout status deploy/backend
 ```
+
+**Production overlay:** CD (Phase 14) creates the Secret from GitHub Secrets, then pins the images to the commit SHA before applying:
+
+```bash
+kubectl -n civicpulse create secret generic backend-secrets   --from-literal=POSTGRES_PASSWORD=... --from-literal=GROQ_API_KEY=...   --dry-run=client -o yaml | kubectl apply -f -
+(cd k8s/overlays/prod && kustomize edit set image   civicpulse/backend=ghcr.io/includeduck/scd-civicpulse/backend:$SHA   civicpulse/frontend=ghcr.io/includeduck/scd-civicpulse/frontend:$SHA)
+kubectl apply -k k8s/overlays/prod
+```
+
+| Symptom | Check |
+|---------|-------|
+| Backend pods stuck in `Init:0/1` | They wait for the schema: `kubectl -n civicpulse logs deploy/backend -c wait-for-schema`, then `kubectl -n civicpulse logs job/migrate` (failed attempts are kept as pods) |
+| Backend `0/1` but not restarting | Readiness failing, i.e. PostgreSQL or Redis unreachable; `kubectl -n civicpulse exec deploy/backend -- python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/ready').read())"` names it. This is the designed behaviour: see `docs/evidence/k8s-probes.txt` |
+| Everyone gets `429` at once | The limiter keys on the client address Traefik records; see `k8s/k3d/traefik-config.yaml` |
 
 ## Rollback
 
 ```bash
-# TODO: Phase 14
-# kubectl -n civicpulse rollout undo deployment/backend
+kubectl -n civicpulse rollout undo deployment/backend     # fast: back to the previous ReplicaSet
+kubectl -n civicpulse rollout history deployment/backend  # what's available (revisionHistoryLimit: 5)
 ```
+
+The declarative rollback, re-applying the previous commit's SHA through the prod overlay, arrives with CD in Phase 14.
 
 ---
 
