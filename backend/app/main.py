@@ -32,7 +32,11 @@ from app.core.exceptions import (
     validation_exception_handler,
 )
 from app.core.logging import configure_logging, get_logger
-from app.core.middleware import RequestIDMiddleware, RequestMetricsMiddleware
+from app.core.middleware import (
+    BodySizeLimitMiddleware,
+    RequestIDMiddleware,
+    RequestMetricsMiddleware,
+)
 from app.providers.triage.factory import build_triage_provider
 from app.routes.complaints import router as complaints_router
 from app.routes.health import router as health_router
@@ -114,6 +118,8 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
         expose_headers=["X-Request-ID", "X-Cache", "Retry-After"],
     )
+    # Inside metrics and request-id, so a 413 is counted and carries X-Request-ID.
+    app.add_middleware(BodySizeLimitMiddleware, max_bytes=settings.max_request_body_bytes)
     app.add_middleware(RequestMetricsMiddleware)  # inside RequestID: logs carry request_id
     app.add_middleware(RequestIDMiddleware)
     # Outermost: resolve the real client IP from X-Forwarded-For, but only when

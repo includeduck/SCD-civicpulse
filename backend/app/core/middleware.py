@@ -13,6 +13,7 @@ Every HTTP request gets a unique request_id. The middleware:
 
 from __future__ import annotations
 
+import json
 import re
 import time
 import uuid
@@ -121,3 +122,79 @@ class RequestMetricsMiddleware:
                 status_code=status_code,
                 duration_ms=round(elapsed * 1000, 1),
             )
+
+
+class BodySizeLimitMiddleware:
+    """Refuse request bodies over ``max_bytes`` with 413, before anything reads them.
+
+    FastAPI reads a body into memory before validating it, and the Ingress
+    sends /api/ straight to the backend (nginx's 64 KB cap only covers the
+    frontend path). One huge POST could push a pod past its memory limit.
+    A declared Content-Length is checked up front; a streamed (chunked) body
+    is counted as it arrives and cut off at the limit.
+    """
+
+    def __init__(self, app: ASGIApp, max_bytes: int) -> None:
+        self.app = app
+        self.max_bytes = max_bytes
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        declared = dict(scope.get("headers") or []).get(b"content-length")
+        if declared is not None and declared.isdigit() and int(declared) > self.max_bytes:
+            await self._reject(send)
+            return
+
+        received = 0
+        too_large = False
+        response_started = False
+
+        async def limited_receive() -> Message:
+            nonlocal received, too_large
+            if too_large:
+                return {"type": "http.disconnect"}
+            message = await receive()
+            if message["type"] == "http.request":
+                received += len(message.get("body", b""))
+                if received > self.max_bytes:
+                    too_large = True
+                    return {"type": "http.disconnect"}  # the app stops reading
+            return message
+
+        async def guarded_send(message: Message) -> None:
+            nonlocal response_started
+            if too_large and not response_started:
+                return  # we answer with 413 instead
+            if message["type"] == "http.response.start":
+                response_started = True
+            await send(message)
+
+        try:
+            await self.app(scope, limited_receive, guarded_send)
+        except Exception:
+            if not too_large:
+                raise
+        if too_large and not response_started:
+            await self._reject(send)
+
+    async def _reject(self, send: Send) -> None:
+        body = json.dumps(
+            {
+                "detail": f"Request body too large (limit {self.max_bytes} bytes).",
+                "code": "payload_too_large",
+            }
+        ).encode()
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 413,
+                "headers": [
+                    (b"content-type", b"application/json"),
+                    (b"content-length", str(len(body)).encode()),
+                ],
+            }
+        )
+        await send({"type": "http.response.body", "body": body})

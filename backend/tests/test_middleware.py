@@ -111,3 +111,40 @@ def test_route_template_keeps_full_paths_and_marks_unmatched():
         == "/health"
     )
     assert route_template({"path": "/nope"}) == "unmatched"
+
+
+# ── Request body size limit ──────────────────────────────────────────────────
+
+
+def test_declared_oversized_body_is_rejected_before_it_is_read(client: TestClient):
+    big = "x" * (70 * 1024)  # over the 64 KiB default
+    response = client.post(
+        "/api/complaints",
+        content=f'{{"text": "{big}", "location": "F-8"}}',
+        headers={"Content-Type": "application/json", "X-Request-ID": "trace-413"},
+    )
+    assert response.status_code == 413
+    assert response.json()["code"] == "payload_too_large"
+    assert response.headers["X-Request-ID"] == "trace-413"
+
+
+def test_streamed_oversized_body_without_content_length_is_cut_off(client: TestClient):
+    def chunks():  # an iterator body is sent chunked, with no Content-Length
+        yield b'{"text": "'
+        for _ in range(20):
+            yield b"x" * 8192
+        yield b'", "location": "F-8"}'
+
+    response = client.post(
+        "/api/complaints", content=chunks(), headers={"Content-Type": "application/json"}
+    )
+    assert response.status_code == 413
+    assert response.json()["code"] == "payload_too_large"
+
+
+def test_normal_complaint_is_unaffected_by_the_limit(client: TestClient):
+    response = client.post(
+        "/api/complaints",
+        json={"text": "Pipe burst ho gaya hai, paani beh raha hai", "location": "F-8"},
+    )
+    assert response.status_code == 201
