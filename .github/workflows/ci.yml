@@ -21,6 +21,13 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
+# `shell: bash` makes every step run with `-eo pipefail`. GitHub's default
+# omits pipefail, so `kustomize build | kubeconform` passed while kustomize was
+# failing (kubeconform happily validated zero resources). Found on this PR.
+defaults:
+  run:
+    shell: bash
+
 env:
   PYTHON_VERSION: "3.12"
   NODE_VERSION: "22"
@@ -209,6 +216,14 @@ jobs:
               -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/ad3b08c5045129d7bb1eeffd8e61719b2c8dd1e2/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
               -
             echo "::endgroup::"
+          done
+      # Belt and braces: an overlay that renders nothing is a failure, not a pass.
+      - name: Every overlay renders resources
+        run: |
+          for overlay in dev prod; do
+            count=$(kubectl kustomize "k8s/overlays/$overlay" | grep -c '^kind:')
+            echo "overlays/$overlay: $count resources"
+            [ "$count" -gt 0 ]
           done
 
   integration:
