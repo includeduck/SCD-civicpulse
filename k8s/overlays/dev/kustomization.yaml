@@ -7,9 +7,9 @@ resources:
   - ../../base
 
 images:
-  - name: civicpulse/backend
+  - name: ghcr.io/includeduck/scd-civicpulse/backend
     newTag: dev
-  - name: civicpulse/frontend
+  - name: ghcr.io/includeduck/scd-civicpulse/frontend
     newTag: dev
 
 patches:
@@ -21,6 +21,26 @@ patches:
       - op: replace
         path: /data/TRIAGE_PROVIDER
         value: simulated
+  # Images are imported into k3d, never pulled: if an import is missing, fail
+  # loudly (ErrImageNeverPull) rather than fetch something from a registry.
+  - target: { kind: Deployment, name: backend }
+    patch: |-
+      - op: add
+        path: /spec/template/spec/initContainers/0/imagePullPolicy
+        value: Never
+      - op: add
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: Never
+  - target: { kind: Deployment, name: frontend }
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: Never
+  - target: { kind: Job, name: migrate }
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: Never
   # Dev also loads the idempotent sample data, so the dashboard isn't empty.
   - target: { kind: Job, name: migrate }
     patch: |-

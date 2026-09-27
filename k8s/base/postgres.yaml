@@ -30,6 +30,8 @@ spec:
     metadata:
       labels: { app.kubernetes.io/name: postgres }
     spec:
+      # No Kubernetes API token: nothing in this pod talks to the API server.
+      automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
         runAsUser: 70                # the image's postgres user
@@ -65,14 +67,19 @@ spec:
             limits: { cpu: "1", memory: 512Mi }
           securityContext:
             allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true   # writes go only to the volumes below
             capabilities: { drop: [ALL] }
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql/data
             - name: run
               mountPath: /var/run/postgresql
+            - name: tmp
+              mountPath: /tmp
       volumes:
         - name: run
+          emptyDir: {}
+        - name: tmp
           emptyDir: {}
   volumeClaimTemplates:
     - metadata:

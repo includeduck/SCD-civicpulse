@@ -34,9 +34,9 @@ kubectl apply -k k8s/k3d/vpa
 kubectl -n kube-system rollout status deploy/vpa-recommender --timeout=180s
 
 step "Images (built here, imported into the cluster; no registry needed)"
-docker build -t "civicpulse/backend:$TAG" backend
-docker build -t "civicpulse/frontend:$TAG" frontend
-k3d image import "civicpulse/backend:$TAG" "civicpulse/frontend:$TAG" -c "$CLUSTER"
+docker build -t "ghcr.io/includeduck/scd-civicpulse/backend:$TAG" backend
+docker build -t "ghcr.io/includeduck/scd-civicpulse/frontend:$TAG" frontend
+k3d image import "ghcr.io/includeduck/scd-civicpulse/backend:$TAG" "ghcr.io/includeduck/scd-civicpulse/frontend:$TAG" -c "$CLUSTER"
 
 step "Deploy (k8s/overlays/dev)"
 # A Job's pod template is immutable: replace it so migrations run again.

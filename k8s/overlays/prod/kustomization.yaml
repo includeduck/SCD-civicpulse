@@ -13,11 +13,9 @@ resources:
   - ../../base
 
 images:
-  - name: civicpulse/backend
-    newName: ghcr.io/includeduck/scd-civicpulse/backend
+  - name: ghcr.io/includeduck/scd-civicpulse/backend
     newTag: set-by-cd-to-a-commit-sha
-  - name: civicpulse/frontend
-    newName: ghcr.io/includeduck/scd-civicpulse/frontend
+  - name: ghcr.io/includeduck/scd-civicpulse/frontend
     newTag: set-by-cd-to-a-commit-sha
 
 patches:

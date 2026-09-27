@@ -29,6 +29,8 @@ spec:
       labels: { app.kubernetes.io/name: frontend }
     spec:
       terminationGracePeriodSeconds: 20
+      # No Kubernetes API token: nothing in this pod talks to the API server.
+      automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
         runAsUser: 101               # the image's nginx user
@@ -42,7 +44,7 @@ spec:
             matchLabels: { app.kubernetes.io/name: frontend }
       containers:
         - name: frontend
-          image: civicpulse/frontend:dev
+          image: ghcr.io/includeduck/scd-civicpulse/frontend:dev
           ports:
             - name: http
               containerPort: 8080

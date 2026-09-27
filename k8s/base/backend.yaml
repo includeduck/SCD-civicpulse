@@ -32,6 +32,8 @@ spec:
     spec:
       # preStop (5 s) + uvicorn's drain (--timeout-graceful-shutdown 25) + margin.
       terminationGracePeriodSeconds: 40
+      # No Kubernetes API token: nothing in this pod talks to the API server.
+      automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
@@ -49,7 +51,7 @@ spec:
         # the schema is at the revision its code expects, so it never serves
         # requests against a missing or older schema.
         - name: wait-for-schema
-          image: civicpulse/backend:dev
+          image: ghcr.io/includeduck/scd-civicpulse/backend:dev
           command: ["python", "-m", "scripts.wait_for_schema", "--timeout", "300"]
           envFrom:
             - configMapRef: { name: backend-config }
@@ -69,7 +71,7 @@ spec:
             capabilities: { drop: [ALL] }
       containers:
         - name: backend
-          image: civicpulse/backend:dev
+          image: ghcr.io/includeduck/scd-civicpulse/backend:dev
           ports:
             - name: http
               containerPort: 8000
