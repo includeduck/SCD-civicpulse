@@ -39,7 +39,8 @@ def _add_request_id(
 def configure_logging(log_level: str = "INFO", log_format: str = "json") -> None:
     """Wire up structlog with JSON output.
 
-    Call once at application startup (inside the lifespan handler).
+    Called from ``create_app`` so it runs when uvicorn imports the app, before
+    uvicorn logs "Started server process"; from then on every line is JSON.
     JSON is the default in every environment so Compose/K8s logs are machine-readable;
     set LOG_FORMAT=console for human-friendly local output.
     """
@@ -84,8 +85,19 @@ def configure_logging(log_level: str = "INFO", log_format: str = "json") -> None
     root_logger.addHandler(handler)
     root_logger.setLevel(log_level)
 
-    # Silence overly verbose third-party loggers.
-    for noisy in ("uvicorn.access", "httpx", "httpcore"):
+    # uvicorn installs its own plain-text handlers; route its lifecycle and
+    # error logs through our JSON handler instead.
+    for name in ("uvicorn", "uvicorn.error"):
+        uvicorn_logger = logging.getLogger(name)
+        uvicorn_logger.handlers.clear()
+        uvicorn_logger.propagate = True
+    # uvicorn's access log is replaced by our request_completed event, which
+    # carries request_id and the route template but not the client IP (ADR 0004).
+    access = logging.getLogger("uvicorn.access")
+    access.handlers.clear()
+    access.propagate = False
+    access.disabled = True
+    for noisy in ("httpx", "httpcore"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
 

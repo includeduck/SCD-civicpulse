@@ -93,8 +93,9 @@ The backend follows a 4-layer architecture: **routes → services → repositori
 | 4 | Simulated triage provider and provider factory | ✅ Done |
 | 5 | LLM/Ollama providers, timeout, retry, fallback, AI cache, injection guardrail | ✅ Done |
 | 6 | Redis stats cache and distributed rate limiter | ✅ Done |
-| 7 | Observability and graceful shutdown | ⏳ Next |
-| 8–9 | Frontend, Docker Compose | 🔜 Planned |
+| 7 | Observability (JSON logs, request metrics) and graceful shutdown | ✅ Done |
+| 8 | Frontend (React + Vite + TypeScript) | ⏳ Next |
+| 9 | Docker Compose, networks, volumes | 🔜 Planned |
 | 10–15 | Tests, Kubernetes, CI/CD, documentation | 🔜 Planned |
 
 See [CivicPulse_ImplementationPlan.md](CivicPulse_ImplementationPlan.md) for the full plan.

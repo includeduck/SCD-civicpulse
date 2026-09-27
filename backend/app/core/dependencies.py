@@ -59,6 +59,14 @@ def _get_session_factory() -> async_sessionmaker[AsyncSession]:
     return _session_factory
 
 
+async def dispose_engine() -> None:
+    """Close every pooled DB connection (graceful shutdown)."""
+    global _session_factory
+    if _session_factory is not None:
+        await _session_factory.kw["bind"].dispose()
+        _session_factory = None
+
+
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """FastAPI dependency that yields an async DB session.
 
@@ -106,6 +114,7 @@ def get_triage_cache(
 
 
 def get_triage_service(
+    request: Request,
     provider: Annotated[TriageProvider, Depends(get_triage_provider)],
     cache: Annotated[TriageCache, Depends(get_triage_cache)],
     settings: SettingsDep,
@@ -115,6 +124,7 @@ def get_triage_service(
         cache,
         timeout_seconds=settings.triage_timeout_seconds,
         retry_base_seconds=settings.triage_retry_base_seconds,
+        limiter=request.app.state.triage_limiter,
     )
 
 

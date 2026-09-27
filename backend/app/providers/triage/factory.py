@@ -27,6 +27,7 @@ def build_triage_provider(settings: Settings) -> TriageProvider:
             seed=settings.simulated_seed,
             failure_mode=settings.simulated_failure_mode,
             failure_rate=settings.simulated_failure_rate,
+            latency_ms=settings.simulated_latency_ms,
         )
     if name == "llm":
         api_key = settings.groq_api_key.get_secret_value()

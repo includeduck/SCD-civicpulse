@@ -27,6 +27,7 @@ same complaint always fails or always succeeds, with no randomness and no sleeps
 from __future__ import annotations
 
 import hashlib
+import time
 from typing import Literal
 
 from app.providers.triage.base import (
@@ -63,6 +64,7 @@ class SimulatedTriage:
         seed: int = 42,
         failure_mode: FailureMode = "none",
         failure_rate: float = 1.0,
+        latency_ms: int = 0,
     ) -> None:
         if not 0.0 <= failure_rate <= 1.0:
             raise ValueError("failure_rate must be between 0.0 and 1.0")
@@ -71,6 +73,9 @@ class SimulatedTriage:
         self.seed = seed
         self.failure_mode = failure_mode
         self.failure_rate = failure_rate
+        # Demo-only delay, like a real model's inference time. Runs in the
+        # provider's worker thread, so it never blocks the event loop.
+        self.latency_ms = latency_ms
         self._rules = RuleBasedTriage()
 
     def _fraction(self, text: str, location: str, salt: str) -> float:
@@ -84,6 +89,8 @@ class SimulatedTriage:
         return self._fraction(text, location, "fail") < self.failure_rate
 
     def triage(self, text: str, location: str) -> TriageResult:
+        if self.latency_ms:
+            time.sleep(self.latency_ms / 1000)
         if self.should_fail(text, location):
             if self.failure_mode == "invalid":
                 # What a misbehaving model looks like: out-of-enum category,

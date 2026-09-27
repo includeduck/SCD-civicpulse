@@ -13,7 +13,7 @@ import asyncio
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Response, status
+from fastapi import APIRouter, Request, Response, status
 from fastapi.responses import JSONResponse
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from sqlalchemy import text
@@ -44,7 +44,7 @@ async def health() -> dict[str, str]:
 
 
 @router.get("/ready", summary="Readiness Probe")
-async def ready() -> JSONResponse:
+async def ready(request: Request) -> JSONResponse:
     """Readiness probe that checks backing infrastructure (PostgreSQL & Redis).
 
     Returns 200 if all dependencies are healthy.
@@ -52,7 +52,6 @@ async def ready() -> JSONResponse:
     Only the exception class is returned; full errors go to the logs, since
     driver messages can include hostnames, usernames or DSN fragments.
     """
-    settings = get_settings()
     checks: dict[str, dict[str, Any]] = {}
     is_ready = True
 
@@ -69,19 +68,12 @@ async def ready() -> JSONResponse:
         checks["database"] = {"status": "failed", "error": type(exc).__name__}
         logger.warning("Readiness probe: database check failed", exc_info=exc)
 
-    # 2. Check Redis
+    # 2. Check Redis, with the same pooled client the app uses (no new
+    #    connection per probe).
     try:
-        import redis.asyncio as aioredis  # type: ignore
-
-        r = aioredis.from_url(
-            str(settings.redis_url),
-            socket_timeout=READINESS_CHECK_TIMEOUT_SECONDS,
-            socket_connect_timeout=READINESS_CHECK_TIMEOUT_SECONDS,
+        await asyncio.wait_for(
+            request.app.state.redis.ping(), READINESS_CHECK_TIMEOUT_SECONDS
         )
-        try:
-            await r.ping()
-        finally:
-            await r.aclose()  # type: ignore[attr-defined]  # types-redis stubs predate redis 5
         checks["redis"] = {"status": "ok"}
     except Exception as exc:
         is_ready = False
