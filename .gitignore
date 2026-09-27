@@ -69,13 +69,14 @@ desktop.ini
 logs/
 
 # ─── Kubernetes secrets (never committed) ────────────────────────────────────
+# k8s/base/secret.yaml IS committed: it holds placeholders only, by design
+# (assignment §3.3), and the prod overlay deletes it. Real values never go in Git.
 k8s/overlays/*/secrets.yaml
-k8s/base/secret.yaml
 
 # ─── Evidence / large binary artifacts ───────────────────────────────────────
+# Screenshots belong in docs/evidence/ (the brief requires them); only video,
+# which is submitted as a link, stays out of Git.
 docs/evidence/*.mp4
-docs/evidence/*.png
-docs/evidence/*.jpg
 
 # ─── Graphify ────────────────────────────────────────────────────────────────
 graphify-out/
