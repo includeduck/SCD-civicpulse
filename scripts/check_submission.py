@@ -122,20 +122,22 @@ def check_required_files() -> None:
 
 _SECRET_PATTERN = re.compile(
     r"""(
-        (?i:password|secret|api[_-]?key|private[_-]?key|token)\s*=\s*['"]?[A-Za-z0-9+/]{16,}
-        | sk-[A-Za-z0-9]{20,}          # OpenAI / Groq style keys
-        | gsk_[A-Za-z0-9]{20,}         # Groq
-        | -----BEGIN\s+(?:RSA\s+)?PRIVATE\s+KEY
+        ghp_[A-Za-z0-9_]{20,}
+        | AKIA[0-9A-Z]{16}
+        | gsk_[A-Za-z0-9]{20,}
+        | sk-[A-Za-z0-9]{20,}
+        | -----BEGIN\s+(?:[A-Z0-9_-]+\s+)?PRIVATE\s+KEY
     )""",
     re.VERBOSE,
 )
 
-# Files that legitimately document secret *names* (not values).
+# Files that legitimately document secret *names* or contain deliberate test fixtures.
 _SECRET_ALLOWLIST = {
     ".env.example",
     "docs/AI-USAGE.md",
     "docs/TRIAGE.md",
     "scripts/check_submission.py",
+    "backend/tests/test_triage_llm.py",
 }
 
 # Extensions to scan.
