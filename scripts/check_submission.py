@@ -390,3 +390,67 @@ def check_git_attribution() -> None:
 
     total = sum(int(ln.split()[0]) for ln in lines if ln.split()[0].isdigit())
     ok(f"total commits (no-merges): {total}")
+
+
+# ---------------------------------------------------------------------------
+# Check: backend four-layer architecture
+# ---------------------------------------------------------------------------
+
+
+def check_backend_structure() -> None:
+    print("\n── Backend layer structure ──")
+    for layer in ("routes", "services", "repositories", "providers"):
+        path = f"backend/app/{layer}"
+        if (ROOT / path).is_dir():
+            ok(f"backend/app/{layer}/ exists")
+        else:
+            fail(f"backend/app/{layer}/ missing — required layer")
+
+    # Heuristic: routes must not import SQLAlchemy directly.
+    routes_dir = ROOT / "backend" / "app" / "routes"
+    if routes_dir.is_dir():
+        sql_in_routes = False
+        for py in routes_dir.rglob("*.py"):
+            content = py.read_text(encoding="utf-8", errors="replace")
+            if re.search(r"from sqlalchemy|import sqlalchemy", content):
+                fail(f"SQL import in route file: {py.relative_to(ROOT)}")
+                sql_in_routes = True
+        if not sql_in_routes:
+            ok("no direct SQLAlchemy imports in routes/ layer")
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
+
+def main() -> int:
+    print("CivicPulse submission checker — brief §5.8\n")
+
+    check_required_files()
+    check_env_and_secrets()
+    check_workflows()
+    check_kubernetes()
+    check_compose_prod()
+    check_probes()
+    check_git_attribution()
+    check_backend_structure()
+
+    passes = sum(1 for s, _, _ in _results if s == "PASS")
+    warnings = sum(1 for s, _, _ in _results if s == "WARN")
+    failures = sum(1 for s, _, _ in _results if s == "FAIL")
+
+    print(f"\n{'─' * 50}")
+    print(f"  PASS: {passes}   WARN: {warnings}   FAIL: {failures}")
+    if failures:
+        print("\n  ✗ Fix the FAILs above before submitting.")
+        return 1
+    if warnings:
+        print("\n  ⚠  Warnings present — review before submitting.")
+    else:
+        print("\n  ✓ All checks passed.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
