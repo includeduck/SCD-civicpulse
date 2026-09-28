@@ -269,8 +269,8 @@ def test_workflow_security_missing_permissions_fails():
 
 
 def test_vpa_off_mode_validation():
-    good_vpa = "apiVersion: autoscaling.k8s.io/v1\nkind: VerticalPodAutoscaler\nspec:\n  updatePolicy:\n    updateMode: \"Off\"\n"
-    bad_vpa = "apiVersion: autoscaling.k8s.io/v1\nkind: VerticalPodAutoscaler\nspec:\n  updatePolicy:\n    updateMode: \"Auto\"\n"
+    good_vpa = 'apiVersion: autoscaling.k8s.io/v1\nkind: VerticalPodAutoscaler\nspec:\n  updatePolicy:\n    updateMode: "Off"\n'
+    bad_vpa = 'apiVersion: autoscaling.k8s.io/v1\nkind: VerticalPodAutoscaler\nspec:\n  updatePolicy:\n    updateMode: "Auto"\n'
     pdb = "apiVersion: policy/v1\nkind: PodDisruptionBudget\n"
     hpa = "apiVersion: autoscaling/v2\nkind: HorizontalPodAutoscaler\nspec:\n  scaleTargetRef:\n    name: backend\n"
 
@@ -279,4 +279,4 @@ def test_vpa_off_mode_validation():
 
     bad_res = validate_autoscaling_and_resilience(bad_vpa, pdb, hpa)
     fails = [n for s, n, _ in bad_res if s == "FAIL"]
-    assert any("updateMode: \"Off\"" in n for n in fails)
+    assert any('updateMode: "Off"' in n for n in fails)
