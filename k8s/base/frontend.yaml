@@ -1,0 +1,82 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  labels: { app.kubernetes.io/name: frontend }
+spec:
+  type: ClusterIP
+  selector: { app.kubernetes.io/name: frontend }
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  labels: { app.kubernetes.io/name: frontend }
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxSurge: 1, maxUnavailable: 0 }
+  selector:
+    matchLabels: { app.kubernetes.io/name: frontend }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: frontend }
+    spec:
+      terminationGracePeriodSeconds: 20
+      # No Kubernetes API token: nothing in this pod talks to the API server.
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101               # the image's nginx user
+        runAsGroup: 101
+        seccompProfile: { type: RuntimeDefault }
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: { app.kubernetes.io/name: frontend }
+      containers:
+        - name: frontend
+          image: ghcr.io/includeduck/scd-civicpulse/frontend:dev
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            # Same image as Compose; only this runtime value differs (ADR 0002).
+            # The Ingress sends /api straight to the backend, so this proxy is
+            # only used when the frontend Service is reached directly.
+            - name: BACKEND_URL
+              value: http://backend:8000
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+          lifecycle:
+            preStop:
+              sleep: { seconds: 5 }
+          resources:
+            requests: { cpu: 20m, memory: 32Mi }
+            limits: { cpu: 200m, memory: 64Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            # nginx renders its config and keeps temp files at start-up; with
+            # a read-only root filesystem these are the only writable paths.
+            - { name: conf, mountPath: /etc/nginx/conf.d }
+            - { name: cache, mountPath: /var/cache/nginx }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - { name: conf, emptyDir: {} }
+        - { name: cache, emptyDir: {} }
+        - { name: tmp, emptyDir: {} }

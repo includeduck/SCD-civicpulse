@@ -1,0 +1,127 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  labels: { app.kubernetes.io/name: backend }
+spec:
+  type: ClusterIP
+  selector: { app.kubernetes.io/name: backend }
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  labels: { app.kubernetes.io/name: backend }
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1          # one extra pod during a rollout...
+      maxUnavailable: 0    # ...and never fewer ready pods than desired
+  selector:
+    matchLabels: { app.kubernetes.io/name: backend }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: backend }
+    spec:
+      # preStop (5 s) + uvicorn's drain (--timeout-graceful-shutdown 25) + margin.
+      terminationGracePeriodSeconds: 40
+      # No Kubernetes API token: nothing in this pod talks to the API server.
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile: { type: RuntimeDefault }
+      # Prefer spreading replicas over nodes, so losing one node isn't losing the API.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: { app.kubernetes.io/name: backend }
+      initContainers:
+        # Migrations run once, in the migrate Job. Each pod waits here until
+        # the schema is at the revision its code expects, so it never serves
+        # requests against a missing or older schema.
+        - name: wait-for-schema
+          image: ghcr.io/includeduck/scd-civicpulse/backend:dev
+          command: ["python", "-m", "scripts.wait_for_schema", "--timeout", "300"]
+          envFrom:
+            - configMapRef: { name: backend-config }
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: backend-secrets, key: POSTGRES_PASSWORD } }
+            - name: GROQ_API_KEY
+              valueFrom: { secretKeyRef: { name: backend-secrets, key: GROQ_API_KEY, optional: true } }
+            - name: DATABASE_URL
+              value: postgresql+asyncpg://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@$(POSTGRES_HOST):5432/$(POSTGRES_DB)
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 200m, memory: 128Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+      containers:
+        - name: backend
+          image: ghcr.io/includeduck/scd-civicpulse/backend:dev
+          ports:
+            - name: http
+              containerPort: 8000
+          envFrom:
+            - configMapRef: { name: backend-config }
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: backend-secrets, key: POSTGRES_PASSWORD } }
+            - name: GROQ_API_KEY
+              valueFrom: { secretKeyRef: { name: backend-secrets, key: GROQ_API_KEY, optional: true } }
+            - name: DATABASE_URL
+              value: postgresql+asyncpg://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@$(POSTGRES_HOST):5432/$(POSTGRES_DB)
+          # Slow start is not failure: up to 60 s to boot before liveness counts.
+          startupProbe:
+            httpGet: { path: /health, port: http }
+            failureThreshold: 30
+            periodSeconds: 2
+          # Restarts the pod, so it must NOT depend on the database: a slow
+          # database would otherwise restart every replica at once.
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          # Removes the pod from the Service while PostgreSQL or Redis is unreachable.
+          readinessProbe:
+            httpGet: { path: /ready, port: http }
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+          lifecycle:
+            # Keep serving for 5 s after termination starts, while the pod is
+            # removed from the Service endpoints; only then does uvicorn get
+            # SIGTERM and stop accepting connections.
+            preStop:
+              sleep: { seconds: 5 }
+          resources:
+            # From the VPA's recommendation under load (Phase 12,
+            # docs/evidence/load/before-vpa/vpa-describe.txt: Target cpu 182m,
+            # memory 250Mi); our first guess was 100m / 128Mi. The HPA's
+            # utilisation is usage divided by this CPU request.
+            requests: { cpu: 182m, memory: 250Mi }
+            limits: { cpu: 500m, memory: 384Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

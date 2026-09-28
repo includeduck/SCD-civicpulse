@@ -26,10 +26,14 @@ class StatsService:
         return stats, False
 
     async def _compute(self) -> StatsResponse:
-        by_category = {row["category"]: row["count"] for row in
-                       await complaint_repo.stats_by_category(self._session)}
-        by_priority = {row["priority"]: row["count"] for row in
-                       await complaint_repo.stats_by_priority(self._session)}
+        by_category = {
+            row["category"]: row["count"]
+            for row in await complaint_repo.stats_by_category(self._session)
+        }
+        by_priority = {
+            row["priority"]: row["count"]
+            for row in await complaint_repo.stats_by_priority(self._session)
+        }
         by_status = await complaint_repo.stats_by_status(self._session)
 
         # Every enum value appears, with zero counts, so clients get a stable shape.

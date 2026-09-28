@@ -23,8 +23,9 @@ def test_env_example_loads(monkeypatch: pytest.MonkeyPatch):
     """`cp .env.example .env` must produce a valid configuration."""
     _load_env_example(monkeypatch)
     settings = Settings(_env_file=None)
-    assert settings.allowed_origins == ["http://localhost:5173", "http://localhost:80"]
-    assert settings.triage_provider == "simulated"
+    assert settings.allowed_origins == ["http://localhost:5173"]
+    assert settings.triage_provider == "ollama"
+    assert settings.ollama_model == "llama3.2:1b"
     assert settings.log_format == "json"
 
 

@@ -15,14 +15,20 @@ from sqlalchemy.pool import StaticPool
 # Set test environment variables before importing app
 os.environ["ENVIRONMENT"] = "test"
 os.environ["DEBUG"] = "true"
-os.environ["DATABASE_URL"] = "postgresql+asyncpg://civicpulse:civicpulse@localhost:5432/civicpulse_test"
+os.environ["DATABASE_URL"] = (
+    "postgresql+asyncpg://civicpulse:civicpulse@localhost:5432/civicpulse_test"
+)
 os.environ["REDIS_URL"] = "redis://localhost:6379/1"
 os.environ["TRIAGE_PROVIDER"] = "simulated"
 
-from app.core.config import get_settings
-from app.core.dependencies import get_db
+from app.core.config import Settings, get_settings
+from app.core.dependencies import get_db, get_redis
 from app.main import create_app
 from app.models.complaint import Base
+
+# Tests never read the developer's .env (the quickstart creates one): only the
+# variables above and each test's own monkeypatching apply.
+Settings.model_config["env_file"] = None
 
 # Clear cached settings so test environment variables take effect
 get_settings.cache_clear()
@@ -61,8 +67,16 @@ def session_factory() -> Generator[async_sessionmaker[AsyncSession], None, None]
 
 
 @pytest.fixture
-def client(app, session_factory) -> Generator[TestClient, None, None]:
-    """Synchronous test client backed by the per-test SQLite database."""
+def fake_redis():
+    """In-memory Redis (fakeredis) so cache code runs for real without a server."""
+    from fakeredis import FakeAsyncRedis
+
+    return FakeAsyncRedis()
+
+
+@pytest.fixture
+def client(app, session_factory, fake_redis) -> Generator[TestClient, None, None]:
+    """Synchronous test client backed by per-test SQLite and in-memory Redis."""
 
     async def _get_test_db() -> AsyncGenerator[AsyncSession, None]:
         async with session_factory() as session:
@@ -72,6 +86,7 @@ def client(app, session_factory) -> Generator[TestClient, None, None]:
                 await session.rollback()
 
     app.dependency_overrides[get_db] = _get_test_db
+    app.dependency_overrides[get_redis] = lambda: fake_redis
     with TestClient(app, base_url="http://testserver") as test_client:
         yield test_client
     app.dependency_overrides.clear()

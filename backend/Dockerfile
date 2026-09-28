@@ -1,65 +1,56 @@
-# ─── Stage 1: Builder ──────────────────────────────────────────────
-FROM python:3.12-slim AS builder
+# syntax=docker/dockerfile:1
 
-WORKDIR /build
+# ─── Stage 1: dependencies ─────────────────────────────────────────
+# Base image pinned by version *and* digest: the tag says what it is, the
+# digest guarantees every build gets the same bytes.
+FROM python:3.12.14-slim@sha256:f77ac9e44ae96ef2c90b8053ea08c31f8be030f824196b0ae4db6d462c84e51f AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# Install build dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    libpq-dev \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
-# Create dedicated virtual environment for build
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Copy package specification first to leverage Docker layer caching
+# Only the dependency list first: this layer is rebuilt when a pinned
+# dependency changes, not on every source edit. Every runtime dependency ships
+# as a binary wheel, so no compiler is needed.
+WORKDIR /build
 COPY pyproject.toml .
+RUN python -c "import tomllib; print('\n'.join(tomllib.load(open('pyproject.toml', 'rb'))['project']['dependencies']))" > requirements.txt \
+    && pip install --only-binary=:all: -r requirements.txt
 
-# Install dependencies into virtualenv
-RUN pip install --upgrade pip && \
-    pip install .
-
-# ─── Stage 2: Runtime ──────────────────────────────────────────────
-FROM python:3.12-slim AS runtime
-
-WORKDIR /app
+# ─── Stage 2: runtime ──────────────────────────────────────────────
+FROM python:3.12.14-slim@sha256:f77ac9e44ae96ef2c90b8053ea08c31f8be030f824196b0ae4db6d462c84e51f AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/opt/venv/bin:$PATH"
 
-# Install minimal runtime libraries (libpq for asyncpg/psycopg2, curl for healthcheck)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpq5 \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+RUN groupadd -g 10001 civicpulse \
+    && useradd -u 10001 -g civicpulse -s /usr/sbin/nologin -M appuser
 
-# Copy virtualenv from builder stage
 COPY --from=builder /opt/venv /opt/venv
 
-# Create unprivileged non-root user (UID 10001)
-RUN groupadd -g 10001 civicpulse && \
-    useradd -u 10001 -g civicpulse -s /bin/sh -m appuser
+# Source last, owned by root: the app user can read it but not modify it.
+WORKDIR /app
+COPY alembic.ini ./
+COPY alembic ./alembic
+COPY scripts ./scripts
+COPY app ./app
 
-# Copy application source code
-COPY --chown=appuser:civicpulse . .
-
-# Switch to unprivileged non-root user
 USER appuser
-
-# Expose FastAPI port
 EXPOSE 8000
 
-# Docker Healthcheck targeting liveness probe
-HEALTHCHECK --interval=15s --timeout=3s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+# Liveness only (never touches the DB), with the Python already in the image:
+# no curl, so one less package to patch.
+HEALTHCHECK --interval=15s --timeout=3s --start-period=10s --retries=3 \
+    CMD ["python", "-c", "import urllib.request, sys; sys.exit(urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2).status != 200)"]
 
-# Exec-form CMD
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Exec-form CMD: uvicorn is PID 1 and receives SIGTERM directly, so it stops
+# accepting connections, drains in-flight requests (at most 25 s, inside the
+# Kubernetes default 30 s grace period), then runs the app's shutdown.
+# Proxy headers and access logs are handled by the app itself (trusted proxies
+# from FORWARDED_ALLOW_IPS; request_completed JSON events without client IPs).
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", \
+     "--timeout-graceful-shutdown", "25", "--no-proxy-headers", "--no-access-log"]

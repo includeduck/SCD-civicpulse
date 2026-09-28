@@ -1,0 +1,33 @@
+# Non-secret configuration. Anything sensitive (passwords, API keys) is in
+# secret.yaml, never here.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-config
+data:
+  ENVIRONMENT: production
+  LOG_LEVEL: INFO
+  LOG_FORMAT: json
+
+  POSTGRES_DB: civicpulse
+  POSTGRES_USER: civicpulse
+  POSTGRES_HOST: postgres            # the Service name, never localhost
+  REDIS_URL: redis://redis:6379/0
+
+  # rules | simulated | llm (overlays choose; llm needs GROQ_API_KEY in the Secret)
+  TRIAGE_PROVIDER: rules
+  TRIAGE_TIMEOUT_SECONDS: "10"
+  GROQ_MODEL: llama-3.1-8b-instant
+  GROQ_BASE_URL: https://api.groq.com/openai/v1
+
+  RATE_LIMIT_REQUESTS: "10"
+  RATE_LIMIT_WINDOW: "60"
+  REDIS_STATS_TTL: "30"
+  # Requests reach the backend through the Ingress controller (Traefik), whose
+  # pods live in the cluster's pod network (k3s: 10.42.0.0/16). Trusting that
+  # range lets the rate limiter see real client IPs; network-policy.yaml
+  # admits only the Ingress controller and the frontend to the backend, so no
+  # other pod can forge X-Forwarded-For. Traefik itself drops client-sent
+  # X-Forwarded-For, and k8s/k3d/traefik-config.yaml keeps the real source
+  # address intact up to Traefik.
+  FORWARDED_ALLOW_IPS: 10.42.0.0/16

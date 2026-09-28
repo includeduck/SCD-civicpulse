@@ -1,0 +1,35 @@
+# Production: images from GHCR pinned to a commit SHA (ADR 0003). CD sets the
+# tag before applying, e.g.
+#   cd k8s/overlays/prod
+#   kustomize edit set image \
+#     civicpulse/backend=ghcr.io/includeduck/scd-civicpulse/backend:$GITHUB_SHA \
+#     civicpulse/frontend=ghcr.io/includeduck/scd-civicpulse/frontend:$GITHUB_SHA
+# The committed tag below is a deliberately invalid placeholder, so applying
+# this overlay unedited fails instead of silently running something stale.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+images:
+  - name: ghcr.io/includeduck/scd-civicpulse/backend
+    newTag: set-by-cd-to-a-commit-sha
+  - name: ghcr.io/includeduck/scd-civicpulse/frontend
+    newTag: set-by-cd-to-a-commit-sha
+
+patches:
+  # The real Secret is created by CD from GitHub Secrets; the placeholder in
+  # base must never be applied over it.
+  - target: { kind: Secret, name: backend-secrets }
+    patch: |-
+      $patch: delete
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: backend-secrets
+  - target: { kind: ConfigMap, name: backend-config }
+    patch: |-
+      - op: replace
+        path: /data/TRIAGE_PROVIDER
+        value: llm

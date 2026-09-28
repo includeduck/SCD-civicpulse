@@ -5,7 +5,10 @@ description = "CivicPulse municipal complaint intake and AI triage backend"
 requires-python = ">=3.12"
 
 dependencies = [
-    "fastapi==0.115.6",
+    "fastapi==0.141.1",
+    # Pinned on its own: 0.41.3 (via FastAPI 0.115) had CVE-2025-62727,
+    # CVE-2026-48818 and CVE-2026-54283 (fixed in 1.3.1), caught by CI's Trivy scan.
+    "starlette==1.7.0",
     "uvicorn[standard]==0.32.1",
     "pydantic==2.10.3",
     "pydantic-settings==2.6.1",
@@ -14,23 +17,24 @@ dependencies = [
     "asyncpg==0.30.0",
     "redis==5.2.1",
     "httpx==0.28.1",
-    "python-multipart==0.0.18",
-    "python-jose[cryptography]==3.3.0",
     "structlog==24.4.0",
     "prometheus-client==0.21.1",
     "greenlet>=3.1.1",
+    "anyio>=4.1",  # to_thread.run_sync(abandon_on_cancel=...) for the triage deadline
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest==8.3.4",
-    "pytest-asyncio==0.24.0",
-    "pytest-cov==6.0.0",
+    "pytest==9.1.1",  # >= 9.0.3: CVE-2025-71176
+    "pytest-asyncio==1.4.0",
+    "pytest-cov==7.1.0",
     "httpx==0.28.1",
     "ruff==0.8.4",
     "mypy==1.13.0",
     "types-redis==4.6.0.20241004",
     "aiosqlite>=0.20.0",
+    "fakeredis==2.26.2",  # in-memory Redis for cache tests; no server in unit tests
+    "pytest-randomly==5.0.0",  # random test order every run, to expose hidden coupling
 ]
 
 [build-system]
@@ -54,6 +58,8 @@ known-third-party = ["alembic"]
 
 [tool.mypy]
 python_version = "3.12"
+# Understands pydantic models; e.g. BaseSettings fields come from the environment.
+plugins = ["pydantic.mypy"]
 strict = false
 ignore_missing_imports = true
 
@@ -61,10 +67,19 @@ ignore_missing_imports = true
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
-addopts = "--cov=app --cov-report=term-missing -q"
+addopts = "--cov=app --cov-report=term-missing"
+# pytest-randomly shuffles test order each run and prints the seed; reproduce
+# an order-dependent failure with `pytest -p randomly --randomly-seed=<seed>`.
 
 [tool.coverage.run]
 # SQLAlchemy async runs code in greenlets and providers run in a threadpool;
 # without this, lines that do execute are reported as missed.
 concurrency = ["greenlet", "thread"]
 omit = ["tests/*", "alembic/*"]
+
+[tool.coverage.report]
+# The brief requires >= 65 % of app/. We're at 98 %, so the floor sits well
+# above the minimum: a PR that adds untested code fails here, not at the viva.
+fail_under = 90
+show_missing = true
+skip_covered = true

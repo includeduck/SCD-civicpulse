@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: civicpulse
+  labels:
+    # Pod Security Admission. Our own pods meet "restricted" (non-root, no
+    # privilege escalation, all capabilities dropped, seccomp); "baseline" is
+    # enforced so the stock Postgres and Redis images still run.
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/warn: restricted

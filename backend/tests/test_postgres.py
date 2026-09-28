@@ -135,3 +135,20 @@ async def test_seed_is_idempotent(session: AsyncSession, monkeypatch):
     await run_seed()
     second = (await session.execute(text("SELECT count(*) FROM complaints"))).scalar_one()
     assert first == second == len(COMPLAINTS) >= 30
+
+
+async def test_wait_for_schema_returns_once_the_schema_is_at_head():
+    """The backend's initContainer: passes immediately against a migrated database."""
+    from scripts.wait_for_schema import current_revision, expected_head, wait
+
+    assert await current_revision(PG_URL) == expected_head()
+    assert await wait(PG_URL, timeout=0) is True
+
+
+def test_running_migrations_does_not_mute_the_apps_loggers():
+    """alembic/env.py's fileConfig must not disable loggers created before it (it did, by default)."""
+    import logging
+
+    _alembic("upgrade", "head")  # runs env.py's fileConfig again, in this process
+    for name in ("app.services.triage", "app.core.middleware"):
+        assert logging.getLogger(name).disabled is False, name

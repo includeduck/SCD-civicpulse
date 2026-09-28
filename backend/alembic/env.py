@@ -20,20 +20,25 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 
 # Import all models so that their tables are registered on Base.metadata
 # before Alembic generates the autogenerate diff.
+from app.core.config import Settings
 from app.models.complaint import Base  # noqa: F401
 
 config = context.config
 
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # fileConfig's default disable_existing_loggers=True silently mutes every
+    # logger created before it, including the app's own. When migrations run
+    # in-process (the PostgreSQL tests), the app's triage_fallback WARNINGs and
+    # request logs then vanish. Found by CI's random test order.
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
-# Override DB URL from environment if set (CI / Docker / K8s).
-db_url = os.getenv("DATABASE_URL")
-if db_url:
-    # asyncpg URL; ensure the correct driver prefix.
-    if db_url.startswith("postgresql://"):
-        db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
-    config.set_main_option("sqlalchemy.url", db_url)
+# The URL comes only from the environment: DATABASE_URL if exported (CI,
+# Docker, K8s), otherwise the app's settings, which also read .env. No URL,
+# and no password, ever lives in alembic.ini.
+db_url = os.getenv("DATABASE_URL") or str(Settings().database_url)
+if db_url.startswith("postgresql://"):
+    db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+config.set_main_option("sqlalchemy.url", db_url)
 
 target_metadata = Base.metadata
 

@@ -1,0 +1,41 @@
+# Rollback, both ways — k3d, prod overlay, 2026-09-27T19:26Z
+# Builds: NEW=70809fa49f3b72bc1a1db441002850fccd8b48e8 (current)  PREV=df02336cf35b4eadc20b7bb5ded7581cb26736ac (previous commit, built from its own source)
+
+## 0. Production is running the new build
+backend image tag: 70809fa49f3b72bc1a1db441002850fccd8b48e8
+
+## 1. Declarative rollback: re-apply the prod overlay pinned to the previous SHA
+$ IMAGE_SHA=df02336cf35b4eadc20b7bb5ded7581cb26736ac bash scripts/cd_deploy.sh
+==> Pin the images: df02336cf35b4eadc20b7bb5ded7581cb26736ac
+        image: ghcr.io/includeduck/scd-civicpulse/backend:df02336cf35b4eadc20b7bb5ded7581cb26736ac
+        image: ghcr.io/includeduck/scd-civicpulse/frontend:df02336cf35b4eadc20b7bb5ded7581cb26736ac
+deployment "backend" successfully rolled out
+deployment "frontend" successfully rolled out
+OK: / 200, /api/stats 200, POST 201, GET 200
+backend: ghcr.io/includeduck/scd-civicpulse/backend:df02336cf35b4eadc20b7bb5ded7581cb26736ac
+backend image tag now: df02336cf35b4eadc20b7bb5ded7581cb26736ac
+
+## 2. Imperative rollback: kubectl rollout undo (back to the previous ReplicaSet)
+$ kubectl -n civicpulse rollout history deployment/backend
+3         <none>
+4         <none>
+5         <none>
+
+$ kubectl -n civicpulse rollout undo deployment/backend
+Warning: resource deployments/backend was previously managed with 'kubectl apply'. Rolling back will not update the kubectl.kubernetes.io/last-applied-configuration annotation, which may cause unexpected behavior on future 'kubectl apply' operations. Consider using 'kubectl apply' with your previous configuration file instead.
+deployment.apps/backend rolled back
+Waiting for deployment "backend" rollout to finish: 1 out of 2 new replicas have been updated...
+Waiting for deployment "backend" rollout to finish: 1 out of 2 new replicas have been updated...
+Waiting for deployment "backend" rollout to finish: 1 out of 2 new replicas have been updated...
+Waiting for deployment "backend" rollout to finish: 1 out of 2 new replicas have been updated...
+Waiting for deployment "backend" rollout to finish: 1 old replicas are pending termination...
+Waiting for deployment "backend" rollout to finish: 1 old replicas are pending termination...
+Waiting for deployment "backend" rollout to finish: 1 old replicas are pending termination...
+deployment "backend" successfully rolled out
+backend image tag now: 70809fa49f3b72bc1a1db441002850fccd8b48e8
+smoke: GET /api/stats -> 200
+
+## Note
+rollout undo changed the cluster but not Git: the overlay/CD still say df02336cf35b4eadc20b7bb5ded7581cb26736ac, so the next
+declarative apply would silently undo the undo. After a 3 a.m. rollout undo, record the fix
+in Git (or re-run CD with the intended SHA) once the fire is out.

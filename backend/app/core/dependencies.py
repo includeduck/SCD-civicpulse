@@ -12,18 +12,20 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator
 from typing import Annotated
 
-from fastapi import Depends
+from fastapi import Depends, Request
+from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.config import Settings, get_settings
-from app.providers.cache import NoOpStatsCache, StatsCache
-from app.providers.rate_limit import AllowAllRateLimiter, RateLimiter
+from app.providers.cache import RedisStatsCache, StatsCache
+from app.providers.rate_limit import RateLimiter, RedisFixedWindowRateLimiter
 from app.providers.triage.base import TriageProvider
-from app.providers.triage.rules import RuleBasedTriage
+from app.providers.triage_cache import RedisTriageCache, TriageCache
 from app.services.complaints import ComplaintService
 from app.services.meta import MetaService
 from app.services.stats import StatsService
 from app.services.status import StatusService
+from app.services.triage import TriageService
 
 # ── Engine / session factory (created lazily on first request) ──────────────
 # The engine is module-level so it is shared across the process lifetime.
@@ -57,6 +59,14 @@ def _get_session_factory() -> async_sessionmaker[AsyncSession]:
     return _session_factory
 
 
+async def dispose_engine() -> None:
+    """Close every pooled DB connection (graceful shutdown)."""
+    global _session_factory
+    if _session_factory is not None:
+        await _session_factory.kw["bind"].dispose()
+        _session_factory = None
+
+
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """FastAPI dependency that yields an async DB session.
 
@@ -85,28 +95,57 @@ DbSession = Annotated[AsyncSession, Depends(get_db)]
 # Wiring lives here so routes only ever receive ready-made services. Tests swap
 # any of these via app.dependency_overrides.
 
-# Phase 3 placeholders: Phase 4 replaces the triage provider with the factory,
-# Phase 6 replaces the cache and limiter with Redis implementations.
-_triage_provider = RuleBasedTriage()
-_stats_cache = NoOpStatsCache()
-_rate_limiter = AllowAllRateLimiter()
+
+def get_triage_provider(request: Request) -> TriageProvider:
+    """The provider built once by the factory in ``create_app``."""
+    provider: TriageProvider = request.app.state.triage_provider
+    return provider
 
 
-def get_triage_provider() -> TriageProvider:
-    return _triage_provider
+def get_redis(request: Request) -> Redis:
+    """Process-wide Redis client, created and closed by the app lifespan."""
+    redis: Redis = request.app.state.redis
+    return redis
 
 
-def get_stats_cache() -> StatsCache:
-    return _stats_cache
+def get_triage_cache(
+    redis: Annotated[Redis, Depends(get_redis)], settings: SettingsDep
+) -> TriageCache:
+    return RedisTriageCache(redis, ttl_seconds=settings.redis_ai_cache_ttl)
 
 
-def get_rate_limiter() -> RateLimiter:
-    return _rate_limiter
+def get_triage_service(
+    request: Request,
+    provider: Annotated[TriageProvider, Depends(get_triage_provider)],
+    cache: Annotated[TriageCache, Depends(get_triage_cache)],
+    settings: SettingsDep,
+) -> TriageService:
+    return TriageService(
+        provider,
+        cache,
+        timeout_seconds=settings.triage_timeout_seconds,
+        retry_base_seconds=settings.triage_retry_base_seconds,
+        limiter=request.app.state.triage_limiter,
+    )
+
+
+def get_stats_cache(
+    redis: Annotated[Redis, Depends(get_redis)], settings: SettingsDep
+) -> StatsCache:
+    return RedisStatsCache(redis, ttl_seconds=settings.redis_stats_ttl)
+
+
+def get_rate_limiter(
+    redis: Annotated[Redis, Depends(get_redis)], settings: SettingsDep
+) -> RateLimiter:
+    return RedisFixedWindowRateLimiter(
+        redis, limit=settings.rate_limit_requests, window_seconds=settings.rate_limit_window
+    )
 
 
 def get_complaint_service(
     db: DbSession,
-    triage: Annotated[TriageProvider, Depends(get_triage_provider)],
+    triage: Annotated[TriageService, Depends(get_triage_service)],
     cache: Annotated[StatsCache, Depends(get_stats_cache)],
     limiter: Annotated[RateLimiter, Depends(get_rate_limiter)],
 ) -> ComplaintService:
@@ -125,8 +164,12 @@ def get_stats_service(
     return StatsService(db, cache)
 
 
-def get_meta_service(db: DbSession, settings: SettingsDep) -> MetaService:
-    return MetaService(db, settings)
+def get_meta_service(
+    db: DbSession,
+    settings: SettingsDep,
+    cache: Annotated[TriageCache, Depends(get_triage_cache)],
+) -> MetaService:
+    return MetaService(db, settings, cache)
 
 
 ComplaintServiceDep = Annotated[ComplaintService, Depends(get_complaint_service)]

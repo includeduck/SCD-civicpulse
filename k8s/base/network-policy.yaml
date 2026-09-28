@@ -1,0 +1,56 @@
+# The Kubernetes counterpart of Compose's two networks: the data stores accept
+# connections only from the backend (and the one-shot migrate Job), so a
+# compromised frontend has no route to the data. k3s enforces NetworkPolicy
+# out of the box. Kubelet probes come from the node, not from a pod, and
+# aren't affected.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-from-backend-only
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: postgres }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - { key: app.kubernetes.io/name, operator: In, values: [backend, migrate] }
+      ports:
+        - { protocol: TCP, port: 5432 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: redis-from-backend-only
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: redis }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { app.kubernetes.io/name: backend }
+      ports:
+        - { protocol: TCP, port: 6379 }
+---
+# The backend trusts X-Forwarded-For from the pod network (configmap.yaml),
+# so only the Ingress controller and the frontend's nginx may connect to it.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backend-from-ingress-and-frontend
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: backend }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: kube-system }
+          podSelector:
+            matchLabels: { app.kubernetes.io/name: traefik }
+        - podSelector:
+            matchLabels: { app.kubernetes.io/name: frontend }
+      ports:
+        - { protocol: TCP, port: 8000 }

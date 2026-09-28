@@ -9,7 +9,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, PostgresDsn, RedisDsn, field_validator
+from pydantic import Field, PostgresDsn, RedisDsn, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -38,34 +38,59 @@ class Settings(BaseSettings):
     # Read as a plain string: pydantic-settings JSON-decodes list fields from env,
     # which rejects the comma-separated form used in .env.example.
     allowed_origins_csv: str = Field(
-        default="http://localhost:3000,http://localhost:5173",
+        default="http://localhost:5173",  # the Vite dev server
         validation_alias="ALLOWED_ORIGINS",
     )
 
     # ── Database ───────────────────────────────────────────────────
-    database_url: PostgresDsn = Field(  # type: ignore[assignment]  # str default is validated
-        default="postgresql+asyncpg://civicpulse:civicpulse@localhost:5432/civicpulse"
-    )
+    # Required, no default: credentials only ever come from the environment /
+    # .env / a Kubernetes Secret, never from source (assignment §3.2).
+    database_url: PostgresDsn
     database_pool_size: int = 10
     database_max_overflow: int = 20
 
     # ── Redis ──────────────────────────────────────────────────────
-    redis_url: RedisDsn = Field(default="redis://localhost:6379/0")  # type: ignore[assignment]
-    redis_stats_ttl: int = 30           # seconds, per §1.3
-    redis_ai_cache_ttl: int = 86400     # 24 hours, per §1.4
+    # Required: in Compose/K8s this is the service name, never localhost.
+    redis_url: RedisDsn
+    redis_stats_ttl: int = 30  # seconds, per §1.3
+    redis_ai_cache_ttl: int = 86400  # 24 hours, per §1.4
 
     # ── Rate Limiting ──────────────────────────────────────────────
-    rate_limit_requests: int = 10       # requests per window
-    rate_limit_window: int = 60         # seconds
+    # Peers allowed to set X-Forwarded-For (IPs or CIDRs, comma-separated).
+    # Requests from anyone else keep their socket address, so a client cannot
+    # spoof its IP to dodge the limiter. Set to the nginx / Ingress network.
+    forwarded_allow_ips: str = "127.0.0.1"
+    rate_limit_requests: int = 10  # requests per window
+    rate_limit_window: int = 60  # seconds
+    # Largest accepted request body. A complaint is at most ~10 KB of JSON
+    # (2000 characters of text); 64 KiB matches nginx's client_max_body_size.
+    max_request_body_bytes: int = 65536
 
     # ── Triage ────────────────────────────────────────────────────
     # Values follow plan §9 (factory). Provider *labels* stored in
     # complaints.triaged_by (e.g. "llm:groq") are a separate vocabulary.
     triage_provider: Literal["llm", "ollama", "rules", "simulated"] = "simulated"
-    triage_timeout_seconds: int = 10
-    groq_api_key: str = ""
-    ollama_base_url: str = "http://localhost:11434"
-    ollama_model: str = "llama3.2"
+    # Hard cap on one provider call, enforced by TriageService (assignment §2.5).
+    triage_timeout_seconds: float = 10.0
+    # Base delay before the single retry; actual delay is jittered to 50–150%.
+    triage_retry_base_seconds: float = 0.5
+    # Worker threads reserved for provider calls. A hung provider can tie up at
+    # most this many threads; the rest of the app keeps its own pool.
+    triage_max_concurrency: int = Field(default=16, ge=1)
+    # SimulatedTriage only (CI/tests/demos); see app/providers/triage/simulated.py.
+    simulated_seed: int = 42
+    simulated_failure_mode: Literal[
+        "none", "timeout", "rate_limited", "server_error", "bad_request", "error", "invalid"
+    ] = "none"
+    simulated_failure_rate: float = Field(default=1.0, ge=0.0, le=1.0)
+    # Artificial per-call delay for demos (loading state, SIGTERM drain, load tests).
+    simulated_latency_ms: int = Field(default=0, ge=0, le=60000)
+    # SecretStr: repr/str/model_dump never reveal the key, so it cannot leak into logs.
+    groq_api_key: SecretStr = SecretStr("")
+    groq_base_url: str = "https://api.groq.com/openai/v1"
+    groq_model: str = "llama-3.1-8b-instant"
+    ollama_base_url: str = "http://ollama:11434"  # the Compose service, not localhost
+    ollama_model: str = "llama3.2:1b"
 
     @property
     def allowed_origins(self) -> list[str]:

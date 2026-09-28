@@ -59,7 +59,9 @@ INVALID_EDGES = sorted(set(itertools.product(Status, Status)) - VALID_EDGES)
 
 
 @pytest.mark.parametrize(("current", "target"), INVALID_EDGES)
-def test_every_invalid_transition_is_409_naming_it(client: TestClient, current: Status, target: Status):
+def test_every_invalid_transition_is_409_naming_it(
+    client: TestClient, current: Status, target: Status
+):
     """Includes same-status requests and every move out of a terminal state."""
     complaint_id = _complaint_in(client, current)
     response = client.patch(f"/api/complaints/{complaint_id}/status", json={"status": target})
@@ -78,7 +80,9 @@ def test_terminal_states_offer_no_transitions(client: TestClient, terminal: Stat
 
 
 def test_unknown_complaint_is_404(client: TestClient):
-    response = client.patch(f"/api/complaints/{uuid.uuid4()}/status", json={"status": "in_progress"})
+    response = client.patch(
+        f"/api/complaints/{uuid.uuid4()}/status", json={"status": "in_progress"}
+    )
     assert response.status_code == status.HTTP_404_NOT_FOUND
 
 
@@ -99,7 +103,11 @@ def test_concurrent_transition_loses_with_409(client: TestClient, monkeypatch):
         return await real_update(session, cid, new_status, expected_status=expected_status)
 
     monkeypatch.setattr(status_service.complaint_repo, "update_status", racing_update)
-    response = client.patch(f"/api/complaints/{complaint_id}/status", json={"status": "in_progress"})
+    response = client.patch(
+        f"/api/complaints/{complaint_id}/status", json={"status": "in_progress"}
+    )
 
     assert response.status_code == status.HTTP_409_CONFLICT
-    assert response.json()["detail"] == "Cannot transition complaint from 'rejected' to 'in_progress'."
+    assert (
+        response.json()["detail"] == "Cannot transition complaint from 'rejected' to 'in_progress'."
+    )

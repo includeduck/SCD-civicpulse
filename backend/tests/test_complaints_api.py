@@ -34,8 +34,8 @@ def test_create_complaint_triages_and_persists(client: TestClient):
     assert body["category"] == "water"
     assert body["priority"] == "high"
     assert body["status"] == "open"
-    assert body["triaged_by"] == "rules"
-    assert body["ai_summary"]
+    assert body["triaged_by"] == "simulated"  # CI runs SimulatedTriage (assignment §2.5)
+    assert body["ai_summary"].startswith("[simulated] ")
     assert isinstance(body["triage_latency_ms"], int)
     assert body["allowed_transitions"] == ["in_progress", "rejected"]
     uuid.UUID(body["id"])
@@ -186,7 +186,14 @@ def test_pagination_is_complete_and_stable(client: TestClient, mixed):
 
 @pytest.mark.parametrize(
     "query",
-    ["page_size=101", "page_size=0", "page=0", "category=banana", "priority=urgent", "status=closed"],
+    [
+        "page_size=101",
+        "page_size=0",
+        "page=0",
+        "category=banana",
+        "priority=urgent",
+        "status=closed",
+    ],
 )
 def test_invalid_list_parameters_return_400(client: TestClient, query: str):
     response = client.get(f"/api/complaints?{query}")

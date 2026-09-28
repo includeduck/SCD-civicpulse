@@ -27,6 +27,46 @@ class TriageResult(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
 
 
+# ── Provider errors ──────────────────────────────────────────────────────────
+# Providers translate SDK/HTTP failures into these, so the service can decide
+# retry and fallback without knowing any provider's internals (assignment §2.5:
+# retry once on timeout, 429 and 5xx only; never retry a 400).
+
+
+class TriageError(Exception):
+    """Any triage failure. Not retryable unless a subclass says otherwise."""
+
+    retryable: bool = False
+
+
+class TriageTimeoutError(TriageError):
+    retryable = True
+
+
+class TriageRateLimitedError(TriageError):
+    """Provider returned 429."""
+
+    retryable = True
+
+
+class TriageServerError(TriageError):
+    """Provider returned 5xx."""
+
+    retryable = True
+
+
+class TriageBadRequestError(TriageError):
+    """Provider returned 400: the request was wrong and will be wrong again."""
+
+
+class TriageUnavailableError(TriageError):
+    """Provider could not be reached at all (DNS, connection refused)."""
+
+
+class TriageInvalidOutputError(TriageError):
+    """Provider answered, but the answer failed TriageResult validation."""
+
+
 @runtime_checkable
 class TriageProvider(Protocol):
     """A replaceable complaint reader.

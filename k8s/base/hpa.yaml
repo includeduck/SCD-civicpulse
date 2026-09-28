@@ -1,0 +1,24 @@
+# Backend autoscaling on CPU relative to the container's CPU *request*
+# (backend.yaml: 100m), so 60 % means ~60m per pod on average.
+# Tuned and measured under load in Phase 12.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: backend
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: backend
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: { type: Utilization, averageUtilization: 60 }
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0      # react to load immediately
+    scaleDown:
+      stabilizationWindowSeconds: 300    # wait 5 min before removing pods, to avoid flapping

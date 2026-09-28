@@ -40,7 +40,7 @@ def test_ready_unreachable_dependencies_returns_503(client: TestClient):
     assert data["dependencies"]["database"]["status"] == "failed"
 
 
-def test_ready_when_dependencies_healthy_returns_200(client: TestClient):
+def test_ready_when_dependencies_healthy_returns_200(client: TestClient, app, fake_redis):
     """GET /ready must return 200 when both DB and Redis are reachable."""
     mock_session = AsyncMock()
     mock_session.execute = AsyncMock()
@@ -51,13 +51,8 @@ def test_ready_when_dependencies_healthy_returns_200(client: TestClient):
     def mock_factory():
         return mock_context
 
-    with patch("app.routes.health._get_session_factory", return_value=mock_factory), \
-         patch("redis.asyncio.from_url") as mock_redis:
-        mock_r = AsyncMock()
-        mock_r.ping = AsyncMock(return_value=True)
-        mock_r.aclose = AsyncMock()
-        mock_redis.return_value = mock_r
-
+    app.state.redis = fake_redis  # /ready pings the app's own pooled Redis client
+    with patch("app.routes.health._get_session_factory", return_value=mock_factory):
         response = client.get("/ready")
         assert response.status_code == status.HTTP_200_OK
         data = response.json()

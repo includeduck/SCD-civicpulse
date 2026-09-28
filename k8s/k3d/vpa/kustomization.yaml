@@ -1,0 +1,16 @@
+# Vertical Pod Autoscaler, recommender only, pinned to release 1.8.0 of the
+# official kubernetes/autoscaler manifests (image registry.k8s.io/autoscaling/vpa-recommender:1.8.0).
+#
+#   kubectl apply -k k8s/k3d/vpa
+#
+# Our VPA runs with updateMode "Off" (k8s/base/vpa.yaml): it only recommends.
+# The updater (which evicts pods to apply new requests) and the admission
+# controller (which rewrites requests on new pods) are deliberately not
+# installed: with Off mode they would never act, and not running them makes
+# it impossible for VPA to fight the HPA (docs/ENGINEERING-NOTES.md, Q6).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - https://raw.githubusercontent.com/kubernetes/autoscaler/vertical-pod-autoscaler-1.8.0/vertical-pod-autoscaler/deploy/vpa-v1-crd-gen.yaml
+  - https://raw.githubusercontent.com/kubernetes/autoscaler/vertical-pod-autoscaler-1.8.0/vertical-pod-autoscaler/deploy/vpa-rbac.yaml
+  - https://raw.githubusercontent.com/kubernetes/autoscaler/vertical-pod-autoscaler-1.8.0/vertical-pod-autoscaler/deploy/recommender-deployment.yaml

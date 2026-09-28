@@ -27,6 +27,7 @@ async def create_complaint(
     *,
     text: str,
     location: str,
+    complaint_id: uuid.UUID | None = None,
     reporter_contact: str | None = None,
     category: str = Category.other,
     priority: str = Priority.normal,
@@ -35,8 +36,13 @@ async def create_complaint(
     triaged_by: str | None = None,
     triage_latency_ms: int | None = None,
 ) -> Complaint:
-    """Persist a new complaint and return the hydrated ORM object."""
+    """Persist a new complaint and return the hydrated ORM object.
+
+    ``complaint_id`` lets the service assign the id before triage, so a triage
+    fallback warning can name the complaint it belongs to.
+    """
     complaint = Complaint(
+        id=complaint_id or uuid.uuid4(),
         text=text,
         location=location,
         reporter_contact=reporter_contact,
@@ -55,9 +61,7 @@ async def create_complaint(
 
 async def get_complaint(session: AsyncSession, complaint_id: uuid.UUID) -> Complaint | None:
     """Return a single Complaint by primary key, or None if not found."""
-    result = await session.execute(
-        select(Complaint).where(Complaint.id == complaint_id)
-    )
+    result = await session.execute(select(Complaint).where(Complaint.id == complaint_id))
     return result.scalar_one_or_none()
 
 
@@ -165,17 +169,12 @@ async def stats_by_priority(session: AsyncSession) -> list[dict[str, Any]]:
 
 async def stats_by_status(session: AsyncSession) -> dict[str, int]:
     """Return complaint counts keyed by status string."""
-    stmt = (
-        select(Complaint.status, func.count().label("total"))
-        .group_by(Complaint.status)
-    )
+    stmt = select(Complaint.status, func.count().label("total")).group_by(Complaint.status)
     result = await session.execute(stmt)
     return {row.status: row.total for row in result}
 
 
-async def recent_triage_outcomes(
-    session: AsyncSession, limit: int = 10
-) -> list[Complaint]:
+async def recent_triage_outcomes(session: AsyncSession, limit: int = 10) -> list[Complaint]:
     """Return the most recent complaints with their triage results (for /api/meta)."""
     stmt = (
         select(Complaint)

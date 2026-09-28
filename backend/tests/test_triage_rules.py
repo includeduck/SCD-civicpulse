@@ -14,7 +14,10 @@ rules = RuleBasedTriage()
 @pytest.mark.parametrize(
     ("text", "category"),
     [
-        ("Burst water main flooding Street 12 since fajr, water entering ground floors", Category.water),
+        (
+            "Burst water main flooding Street 12 since fajr, water entering ground floors",
+            Category.water,
+        ),
         ("Bijli nahi aa rahi, transformer se dhuan nikal raha hai", Category.electricity),
         ("Kachra teen din se nahi uthaya gaya, gali mein badboo hai", Category.sanitation),
         ("Sarak par bara gharha hai, motorcycle wale gir rahe hain", Category.roads),
@@ -39,7 +42,9 @@ def test_urgency_terms_make_priority_high():
 
 def test_low_and_normal_priority():
     assert rules.triage("Minor pothole near the school gate", "F-7").priority == Priority.low
-    assert rules.triage("Pothole near the school gate for a week", "F-7").priority == Priority.normal
+    assert (
+        rules.triage("Pothole near the school gate for a week", "F-7").priority == Priority.normal
+    )
 
 
 def test_keywords_match_whole_words_only():
