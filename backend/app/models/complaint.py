@@ -116,6 +116,11 @@ class Complaint(Base):
     ai_summary: Mapped[str | None] = mapped_column(String(140), nullable=True)
     triaged_by: Mapped[str | None] = mapped_column(String(32), nullable=True)
     triage_latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    triage_corrected_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        default=None,
+    )
 
     # ── Timestamps ───────────────────────────────────────────────────────────
     created_at: Mapped[datetime] = mapped_column(
