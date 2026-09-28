@@ -25,6 +25,15 @@ graph TD
 
 ---
 
+## Screenshots
+
+| Complaint Intake & AI Triage | Operations Dashboard | System & Cache Statistics |
+|:---:|:---:|:---:|
+| [![Complaint Intake](docs/screenshots/report-triage.png)](docs/screenshots/report-triage.png) | [![Operations Dashboard](docs/screenshots/dashboard.png)](docs/screenshots/dashboard.png) | [![System & Cache Statistics](docs/screenshots/stats-cache-hit.png)](docs/screenshots/stats-cache-hit.png) |
+| *Intake portal showing automated category and priority classification with model latency* | *Live operations console with operator triage overrides and status state transitions* | *Aggregated operational statistics and Redis caching metrics (`X-Cache: HIT`)* |
+
+---
+
 ## Quick Start (local)
 
 Needs Docker with Compose v2 (Docker Desktop on Windows or macOS). Nothing else.
