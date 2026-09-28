@@ -2,7 +2,8 @@
 
 > **CS4032 Software Construction and Design — Assignment 01**
 
-<!-- CI/CD badges are added in Phases 13–14, once .github/workflows/ci.yml and cd.yml exist. -->
+[![CI](https://github.com/includeduck/SCD-civicpulse/actions/workflows/ci.yml/badge.svg?branch=dev)](https://github.com/includeduck/SCD-civicpulse/actions/workflows/ci.yml)
+<!-- The CD badge is added in Phase 14 with cd.yml. -->
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 ## Problem Statement
@@ -147,10 +148,29 @@ cd ../frontend && npm run gen:api                # regenerates src/api/schema.d.
 | 10 | Automated test strategy: coverage floors, random order, traceability ([TESTING.md](docs/TESTING.md)) | ✅ Done |
 | 11 | Kubernetes: Kustomize base and overlays, k3d, probes, zero-downtime rollouts | ✅ Done |
 | 12 | HPA under load, VPA recommender loop, k6 load test ([results](docs/evidence/load/README.md)) | ✅ Done |
-| 13 | CI (`ci.yml`) | ⏳ Next |
-| 14–15 | CD, release, documentation | 🔜 Planned |
+| 13 | CI: lint and types, tests with PostgreSQL, image build, Trivy, kubeconform, Compose integration | ✅ Done |
+| 14 | CD: GHCR by SHA, deploy to an ephemeral cluster, rollback | ⏳ Next |
+| 15 | Documentation and submission | 🔜 Planned |
 
 See [CivicPulse_ImplementationPlan.md](CivicPulse_ImplementationPlan.md) for the full plan.
+
+---
+
+## Continuous Integration
+
+`.github/workflows/ci.yml` runs on every pull request to `main` or `dev` and on every push to `dev`. It builds, but it never publishes anything.
+
+| Job | What it proves |
+|-----|----------------|
+| `lint-and-type` | ruff (lint and format), mypy, eslint, `tsc --noEmit`, and the OpenAPI contract: `frontend/openapi.json` and the generated TypeScript types match the backend |
+| `test-backend` | pytest with a real PostgreSQL 16 service (so the migration and constraint tests run too), `TRIAGE_PROVIDER=simulated`, random order, fails under 90 % coverage |
+| `test-frontend` | Vitest, shuffled, with coverage thresholds |
+| `build (backend / frontend)` | Both images build; not pushed |
+| `scan (backend / frontend)` | Trivy fails on any HIGH/CRITICAL with a fix available (`.trivyignore` for reasoned exceptions) |
+| `manifests` | `kustomize build` of both overlays through kubeconform, strict |
+| `integration` | `scripts/ci_integration.sh`: Compose up, `/ready`, POST a complaint and GET it back, `X-Cache` MISS → HIT, the frontend can't reach the database, `down -v` |
+
+Every action is pinned to a commit SHA, and Trivy and kubeconform run from images pinned by digest. The workflow has read-only permissions.
 
 ---
 

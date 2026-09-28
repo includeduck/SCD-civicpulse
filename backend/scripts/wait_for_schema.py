@@ -60,7 +60,11 @@ async def wait(database_url: str, timeout: float, interval: float = 2.0) -> bool
             print(f"schema is at {head}", flush=True)
             return True
         if time.monotonic() >= deadline:
-            print(f"timed out: schema is at {revision!r}, expected {head}", file=sys.stderr, flush=True)
+            print(
+                f"timed out: schema is at {revision!r}, expected {head}",
+                file=sys.stderr,
+                flush=True,
+            )
             return False
         print(f"waiting for schema {head} (currently {revision!r})", flush=True)
         await asyncio.sleep(interval)

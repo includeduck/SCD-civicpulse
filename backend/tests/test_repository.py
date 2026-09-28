@@ -136,8 +136,14 @@ async def test_update_status(db_session: AsyncSession):
 
     assert updated is not None
     assert updated.status == Status.in_progress
-    c_time = complaint.created_at if complaint.created_at.tzinfo else complaint.created_at.replace(tzinfo=UTC)
-    u_time = updated.updated_at if updated.updated_at.tzinfo else updated.updated_at.replace(tzinfo=UTC)
+    c_time = (
+        complaint.created_at
+        if complaint.created_at.tzinfo
+        else complaint.created_at.replace(tzinfo=UTC)
+    )
+    u_time = (
+        updated.updated_at if updated.updated_at.tzinfo else updated.updated_at.replace(tzinfo=UTC)
+    )
     assert u_time >= c_time
 
     # Update non-existent complaint

@@ -5,7 +5,10 @@ description = "CivicPulse municipal complaint intake and AI triage backend"
 requires-python = ">=3.12"
 
 dependencies = [
-    "fastapi==0.115.6",
+    "fastapi==0.141.1",
+    # Pinned on its own: 0.41.3 (via FastAPI 0.115) had CVE-2025-62727,
+    # CVE-2026-48818 and CVE-2026-54283 (fixed in 1.3.1), caught by CI's Trivy scan.
+    "starlette==1.7.0",
     "uvicorn[standard]==0.32.1",
     "pydantic==2.10.3",
     "pydantic-settings==2.6.1",

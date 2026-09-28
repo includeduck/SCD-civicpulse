@@ -127,8 +127,14 @@ def test_status_update_request():
 def test_stats_response():
     stats = StatsResponse(
         total_complaints=10,
-        by_category=[CategoryCount(category="water", count=6), CategoryCount(category="roads", count=4)],
-        by_priority=[PriorityCount(priority="high", count=7), PriorityCount(priority="normal", count=3)],
+        by_category=[
+            CategoryCount(category="water", count=6),
+            CategoryCount(category="roads", count=4),
+        ],
+        by_priority=[
+            PriorityCount(priority="high", count=7),
+            PriorityCount(priority="normal", count=3),
+        ],
         open_count=5,
         in_progress_count=3,
         resolved_count=2,

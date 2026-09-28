@@ -52,16 +52,16 @@ class Settings(BaseSettings):
     # ── Redis ──────────────────────────────────────────────────────
     # Required: in Compose/K8s this is the service name, never localhost.
     redis_url: RedisDsn
-    redis_stats_ttl: int = 30           # seconds, per §1.3
-    redis_ai_cache_ttl: int = 86400     # 24 hours, per §1.4
+    redis_stats_ttl: int = 30  # seconds, per §1.3
+    redis_ai_cache_ttl: int = 86400  # 24 hours, per §1.4
 
     # ── Rate Limiting ──────────────────────────────────────────────
     # Peers allowed to set X-Forwarded-For (IPs or CIDRs, comma-separated).
     # Requests from anyone else keep their socket address, so a client cannot
     # spoof its IP to dodge the limiter. Set to the nginx / Ingress network.
     forwarded_allow_ips: str = "127.0.0.1"
-    rate_limit_requests: int = 10       # requests per window
-    rate_limit_window: int = 60         # seconds
+    rate_limit_requests: int = 10  # requests per window
+    rate_limit_window: int = 60  # seconds
 
     # ── Triage ────────────────────────────────────────────────────
     # Values follow plan §9 (factory). Provider *labels* stored in

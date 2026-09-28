@@ -13,7 +13,9 @@ from app.providers.triage.base import TriageResult
 from app.providers.triage_cache import CachedTriage, CacheStats, RedisTriageCache, triage_cache_key
 from app.services.triage import TriageService
 
-RESULT = TriageResult(category=Category.roads, priority=Priority.normal, summary="Pothole", confidence=0.8)
+RESULT = TriageResult(
+    category=Category.roads, priority=Priority.normal, summary="Pothole", confidence=0.8
+)
 
 
 def test_key_normalises_whitespace_and_case_and_scopes_by_provider():

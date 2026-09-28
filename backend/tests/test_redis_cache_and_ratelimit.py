@@ -214,17 +214,27 @@ def proxied_client(session_factory, fake_redis, monkeypatch) -> Generator[TestCl
 
 
 def test_clients_behind_a_trusted_proxy_get_separate_buckets(proxied_client, fake_redis):
-    first = proxied_client.post("/api/complaints", json=COMPLAINT, headers={"X-Forwarded-For": "203.0.113.10"})
-    second = proxied_client.post("/api/complaints", json=COMPLAINT, headers={"X-Forwarded-For": "203.0.113.11"})
-    again = proxied_client.post("/api/complaints", json=COMPLAINT, headers={"X-Forwarded-For": "203.0.113.10"})
+    first = proxied_client.post(
+        "/api/complaints", json=COMPLAINT, headers={"X-Forwarded-For": "203.0.113.10"}
+    )
+    second = proxied_client.post(
+        "/api/complaints", json=COMPLAINT, headers={"X-Forwarded-For": "203.0.113.11"}
+    )
+    again = proxied_client.post(
+        "/api/complaints", json=COMPLAINT, headers={"X-Forwarded-For": "203.0.113.10"}
+    )
     assert (first.status_code, second.status_code, again.status_code) == (201, 201, 429)
 
 
 def test_spoofed_forwarded_for_from_untrusted_peer_is_ignored(client: TestClient, app, fake_redis):
     """The default app trusts only 127.0.0.1, so a client cannot mint new IPs to dodge the limit."""
     _limit(app, fake_redis, limit=1)
-    first = client.post("/api/complaints", json=COMPLAINT, headers={"X-Forwarded-For": "203.0.113.20"})
-    second = client.post("/api/complaints", json=COMPLAINT, headers={"X-Forwarded-For": "203.0.113.21"})
+    first = client.post(
+        "/api/complaints", json=COMPLAINT, headers={"X-Forwarded-For": "203.0.113.20"}
+    )
+    second = client.post(
+        "/api/complaints", json=COMPLAINT, headers={"X-Forwarded-For": "203.0.113.21"}
+    )
     assert (first.status_code, second.status_code) == (201, 429)
 
 

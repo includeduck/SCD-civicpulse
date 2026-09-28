@@ -60,7 +60,11 @@ def test_every_request_logs_one_json_line_with_request_id(client: TestClient, js
     assert len(completed) == 1
     event = completed[0]
     assert event["request_id"] == "trace-abc" == response.headers["X-Request-ID"]
-    assert (event["method"], event["endpoint"], event["status_code"]) == ("POST", "/api/complaints", 201)
+    assert (event["method"], event["endpoint"], event["status_code"]) == (
+        "POST",
+        "/api/complaints",
+        201,
+    )
     assert isinstance(event["duration_ms"], float)
     assert "client" not in event and "client_ip" not in event  # no personal data (ADR 0004)
 
@@ -120,7 +124,9 @@ def test_server_errors_are_counted_as_500(app, client: TestClient):
     async def boom():
         raise RuntimeError("boom")
 
-    series = 'civicpulse_requests_total{endpoint="/test-boom-metrics",method="GET",status_code="500"}'
+    series = (
+        'civicpulse_requests_total{endpoint="/test-boom-metrics",method="GET",status_code="500"}'
+    )
     with TestClient(app, raise_server_exceptions=False) as failing:
         failing.get("/test-boom-metrics")
         assert _metric(failing, series) == 1
@@ -164,7 +170,9 @@ async def test_dispose_engine_closes_the_pool():
 async def test_saturated_triage_pool_degrades_to_fallback_not_a_hang():
     """With the triage limiter full, a new call waits, hits the deadline and falls back."""
     release = threading.Event()
-    result = TriageResult(category=Category.water, priority=Priority.high, summary="x", confidence=0.9)
+    result = TriageResult(
+        category=Category.water, priority=Priority.high, summary="x", confidence=0.9
+    )
 
     class HangingProvider:
         name = "llm:groq"

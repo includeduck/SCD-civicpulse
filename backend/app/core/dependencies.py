@@ -95,6 +95,7 @@ DbSession = Annotated[AsyncSession, Depends(get_db)]
 # Wiring lives here so routes only ever receive ready-made services. Tests swap
 # any of these via app.dependency_overrides.
 
+
 def get_triage_provider(request: Request) -> TriageProvider:
     """The provider built once by the factory in ``create_app``."""
     provider: TriageProvider = request.app.state.triage_provider

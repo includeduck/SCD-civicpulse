@@ -34,14 +34,21 @@ from app.providers.triage.prompt import SYSTEM_PROMPT
 API_KEY = "gsk_test_SECRET_do_not_log_7f3a"
 TEXT = "Burst water main flooding Street 12 since fajr, water entering ground floors"
 LOCATION = "Street 12, G-10/2"
-VALID = {"category": "water", "priority": "high", "summary": "Burst main flooding homes", "confidence": 0.93}
+VALID = {
+    "category": "water",
+    "priority": "high",
+    "summary": "Burst main flooding homes",
+    "confidence": 0.93,
+}
 
 Handler = Callable[[httpx.Request], httpx.Response]
 
 
 def groq_reply(content: str | dict) -> httpx.Response:
     text = content if isinstance(content, str) else json.dumps(content)
-    return httpx.Response(200, json={"choices": [{"message": {"role": "assistant", "content": text}}]})
+    return httpx.Response(
+        200, json={"choices": [{"message": {"role": "assistant", "content": text}}]}
+    )
 
 
 def make_llm(handler: Handler) -> LLMTriage:
@@ -90,7 +97,9 @@ def test_ollama_requests_schema_constrained_output():
 
     def handler(request: httpx.Request) -> httpx.Response:
         seen.append(json.loads(request.content))
-        return httpx.Response(200, json={"message": {"role": "assistant", "content": json.dumps(VALID)}})
+        return httpx.Response(
+            200, json={"message": {"role": "assistant", "content": json.dumps(VALID)}}
+        )
 
     result = make_ollama(handler).triage(TEXT, LOCATION)
     assert result.category == Category.water
@@ -152,8 +161,17 @@ def test_transport_errors_are_typed(exc, error):
         json.dumps(["water", "high"]),  # not an object
         json.dumps({"category": "water"}),  # missing fields
     ],
-    ids=["prose", "code_fence", "enum_category", "enum_priority", "long_summary",
-         "confidence_range", "extra_key", "not_object", "missing_fields"],
+    ids=[
+        "prose",
+        "code_fence",
+        "enum_category",
+        "enum_priority",
+        "long_summary",
+        "confidence_range",
+        "extra_key",
+        "not_object",
+        "missing_fields",
+    ],
 )
 def test_malformed_model_output_is_rejected(content):
     with pytest.raises(TriageInvalidOutputError):
@@ -193,7 +211,9 @@ def test_10_injection_that_hijacks_the_model_cannot_escape_the_schema(client: Te
     the rules fallback decides, and the category/priority come from what actually happened."""
 
     def obedient_model(request: httpx.Request) -> httpx.Response:
-        return groq_reply({"category": "ignored", "priority": "lowest", "summary": "ok", "confidence": 1})
+        return groq_reply(
+            {"category": "ignored", "priority": "lowest", "summary": "ok", "confidence": 1}
+        )
 
     app.dependency_overrides[get_triage_provider] = lambda: make_llm(obedient_model)
     response = client.post("/api/complaints", json={"text": INJECTION, "location": "Model Town"})
@@ -235,7 +255,13 @@ def test_9_api_key_absent_from_logs_errors_and_reprs(client: TestClient, app):
     from app.core.config import Settings
 
     settings = Settings(_env_file=None, groq_api_key=API_KEY)  # type: ignore[arg-type]
-    haystack = stream.getvalue() + "".join(errors) + repr(provider) + repr(settings) + str(settings.model_dump())
+    haystack = (
+        stream.getvalue()
+        + "".join(errors)
+        + repr(provider)
+        + repr(settings)
+        + str(settings.model_dump())
+    )
     assert "triage_fallback" in stream.getvalue()  # the logs were really captured
     assert API_KEY not in haystack
 

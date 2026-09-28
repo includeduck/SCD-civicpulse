@@ -84,3 +84,30 @@ def test_unhandled_error_keeps_request_id():
     assert response.headers.get("X-Request-ID") == "trace-500"
     assert response.json()["code"] == "internal_error"
     assert seen == ["trace-500"]
+
+
+class _Route:
+    def __init__(self, path: str) -> None:
+        self.path = self.path_format = path
+
+
+def test_route_template_restores_outer_router_prefixes():
+    """FastAPI 0.14x reports routes relative to their router; the label must stay the full template."""
+    from app.core.middleware import route_template
+
+    scope = {
+        "route": _Route("/complaints/{complaint_id}"),
+        "path": "/api/complaints/8c1f7a52",
+        "path_params": {"complaint_id": "8c1f7a52"},
+    }
+    assert route_template(scope) == "/api/complaints/{complaint_id}"
+
+
+def test_route_template_keeps_full_paths_and_marks_unmatched():
+    from app.core.middleware import route_template
+
+    assert (
+        route_template({"route": _Route("/health"), "path": "/health", "path_params": {}})
+        == "/health"
+    )
+    assert route_template({"path": "/nope"}) == "unmatched"

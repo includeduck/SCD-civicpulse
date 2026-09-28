@@ -26,7 +26,11 @@ from app.models.complaint import Base  # noqa: F401
 config = context.config
 
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # fileConfig's default disable_existing_loggers=True silently mutes every
+    # logger created before it, including the app's own. When migrations run
+    # in-process (the PostgreSQL tests), the app's triage_fallback WARNINGs and
+    # request logs then vanish. Found by CI's random test order.
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # The URL comes only from the environment: DATABASE_URL if exported (CI,
 # Docker, K8s), otherwise the app's settings, which also read .env. No URL,

@@ -19,7 +19,11 @@ class ValidationErrorResponse(BaseModel):
 
 ResponseSpec = dict[int | str, dict[str, Any]]
 
-VALIDATION_ERROR: ResponseSpec = {400: {"model": ValidationErrorResponse, "description": "Invalid input"}}
+VALIDATION_ERROR: ResponseSpec = {
+    400: {"model": ValidationErrorResponse, "description": "Invalid input"}
+}
 NOT_FOUND: ResponseSpec = {404: {"model": ErrorResponse, "description": "Complaint not found"}}
-INVALID_TRANSITION: ResponseSpec = {409: {"model": ErrorResponse, "description": "Transition not allowed"}}
+INVALID_TRANSITION: ResponseSpec = {
+    409: {"model": ErrorResponse, "description": "Transition not allowed"}
+}
 RATE_LIMITED: ResponseSpec = {429: {"model": ErrorResponse, "description": "Rate limit exceeded"}}
