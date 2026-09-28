@@ -92,4 +92,72 @@ describe("Dashboard", () => {
     await user.click(screen.getByRole("button", { name: "Try again" }));
     expect(await screen.findByText("No complaints match these filters.")).toBeInTheDocument();
   });
+
+  it("renders AI summary label as 'AI summary of the report:'", async () => {
+    mockFetch().mockResolvedValueOnce(
+      jsonResponse(page([complaint({ ai_summary: "Flooded street" })])),
+    );
+    renderAt(<DashboardPage />, "/dashboard");
+
+    expect(await screen.findByText("AI summary of the report:")).toBeInTheDocument();
+    expect(screen.getByText("Flooded street")).toBeInTheDocument();
+  });
+
+  it("allows operators to correct triage category and priority", async () => {
+    const fetchMock = mockFetch();
+    const initial = complaint({
+      id: "comp-1",
+      category: "water",
+      priority: "high",
+      triage_corrected_at: null,
+    });
+    const corrected = {
+      ...initial,
+      category: "roads" as const,
+      priority: "low" as const,
+      triage_corrected_at: "2026-09-28T12:00:00Z",
+    };
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(page([initial])))
+      .mockResolvedValueOnce(jsonResponse(corrected));
+
+    const user = userEvent.setup();
+    renderAt(<DashboardPage />, "/dashboard");
+
+    expect(await screen.findByText("Water")).toBeInTheDocument();
+    expect(screen.queryByText("(triage corrected)")).not.toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText("Correct category"), "roads");
+    await user.selectOptions(screen.getByLabelText("Correct priority"), "low");
+    await user.click(screen.getByRole("button", { name: "Save triage" }));
+
+    expect(call(fetchMock, 1)).toMatchObject({
+      url: "/api/complaints/comp-1/triage",
+      method: "PATCH",
+      body: { category: "roads", priority: "low" },
+    });
+
+    expect(await screen.findByText("(triage corrected)")).toBeInTheDocument();
+    expect(within(screen.getByRole("listitem")).getByText("Roads", { selector: ".badge" })).toBeInTheDocument();
+    expect(within(screen.getByRole("listitem")).getByText("Low", { selector: ".badge" })).toBeInTheDocument();
+  });
+
+  it("displays server error verbatim when triage correction fails", async () => {
+    const fetchMock = mockFetch();
+    const initial = complaint({ id: "comp-2" });
+    const ERROR_DETAIL = "At least one of category or priority must be provided.";
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(page([initial])))
+      .mockResolvedValueOnce(
+        jsonResponse({ detail: ERROR_DETAIL, code: "empty_triage_correction" }, { status: 400 }),
+      );
+
+    const user = userEvent.setup();
+    renderAt(<DashboardPage />, "/dashboard");
+
+    await screen.findByRole("button", { name: "Save triage" });
+    await user.click(screen.getByRole("button", { name: "Save triage" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(ERROR_DETAIL);
+  });
 });
