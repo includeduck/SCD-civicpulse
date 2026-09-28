@@ -147,30 +147,60 @@ _TEXT_EXTS = {
 _SKIP_DIRS = {".git", "node_modules", "__pycache__", ".ruff_cache", ".venv"}
 
 
-def _tracked_files() -> list[Path]:
-    """All text files under ROOT, skipping binary and ignored dirs."""
-    results: list[Path] = []
+def is_tracked(path: str) -> bool:
+    """True if path is tracked by git."""
+    try:
+        res = subprocess.run(
+            ["git", "ls-files", "--error-unmatch", path],
+            capture_output=True,
+            stdin=subprocess.DEVNULL,
+            cwd=ROOT,
+            timeout=10,
+        )
+        return res.returncode == 0
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return (ROOT / path).exists()
+
+
+def get_tracked_files() -> list[str]:
+    """Return all tracked file paths relative to ROOT."""
+    try:
+        res = subprocess.run(
+            ["git", "ls-files"],
+            capture_output=True,
+            text=True,
+            stdin=subprocess.DEVNULL,
+            cwd=ROOT,
+            timeout=15,
+        )
+        if res.returncode == 0:
+            return [line.strip().replace("\\", "/") for line in res.stdout.splitlines() if line.strip()]
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    results: list[str] = []
     for p in ROOT.rglob("*"):
         if any(d in p.parts for d in _SKIP_DIRS):
             continue
-        if p.is_file() and p.suffix in _TEXT_EXTS:
-            results.append(p)
+        if p.is_file():
+            results.append(str(p.relative_to(ROOT)).replace("\\", "/"))
     return results
 
 
 def check_env_and_secrets() -> None:
     print("\n── .env and secrets ──")
     # .env must not be a tracked file
-    if exists(".env"):
-        fail(".env is present — must not be committed")
+    if is_tracked(".env"):
+        fail(".env is tracked in git — must not be committed")
     else:
-        ok(".env absent from repository")
+        ok(".env is not tracked in git")
 
-    # Scan for accidental secret values
+    # Scan for accidental secret values in tracked files
     found_secrets = False
-    for p in _tracked_files():
-        rel = str(p.relative_to(ROOT)).replace("\\", "/")
+    for rel in get_tracked_files():
         if rel in _SECRET_ALLOWLIST:
+            continue
+        p = ROOT / rel
+        if p.suffix not in _TEXT_EXTS:
             continue
         try:
             content = p.read_text(encoding="utf-8", errors="replace")
@@ -180,7 +210,7 @@ def check_env_and_secrets() -> None:
             fail(f"possible secret in {rel}")
             found_secrets = True
     if not found_secrets:
-        ok("no obvious secret values in source files")
+        ok("no obvious secret values in tracked source files")
 
 
 # ---------------------------------------------------------------------------
