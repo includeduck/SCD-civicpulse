@@ -215,3 +215,64 @@ def check_workflows() -> None:
             warn(f"action not pinned by SHA — {u}")
     else:
         ok("all actions pinned by 40-hex SHA digest")
+
+
+# ---------------------------------------------------------------------------
+# Check: Kustomize overlays exist; no `latest` tag in K8s manifests
+# ---------------------------------------------------------------------------
+
+_REQUIRED_OVERLAYS = ["k8s/overlays/dev/kustomization.yaml", "k8s/overlays/prod/kustomization.yaml"]
+_REQUIRED_K8S_BASE = [
+    "k8s/base/kustomization.yaml",
+    "k8s/base/backend.yaml",
+    "k8s/base/frontend.yaml",
+    "k8s/base/postgres.yaml",
+    "k8s/base/redis.yaml",
+    "k8s/base/ingress.yaml",
+    "k8s/base/hpa.yaml",
+    "k8s/base/vpa.yaml",
+    "k8s/base/network-policy.yaml",
+    "k8s/base/pdb.yaml",
+]
+
+
+def check_kubernetes() -> None:
+    print("\n── Kubernetes manifests ──")
+    for path in _REQUIRED_OVERLAYS:
+        check_file(path)
+    for path in _REQUIRED_K8S_BASE:
+        check_file(path)
+
+    # No `:latest` tag in any K8s YAML (deployment images should be SHA-pinned).
+    latest_hits: list[str] = []
+    k8s_dir = ROOT / "k8s"
+    for p in k8s_dir.rglob("*.yaml"):
+        for lineno, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
+            if re.search(r"image:\s+\S+:latest", line):
+                latest_hits.append(f"{p.relative_to(ROOT)}:{lineno}: {line.strip()}")
+    if latest_hits:
+        for h in latest_hits:
+            fail(f"`:latest` tag in K8s manifest — {h}")
+    else:
+        ok("no :latest tags in Kubernetes manifests")
+
+    # Postgres must be a StatefulSet (not a Deployment).
+    postgres_yaml = read("k8s/base/postgres.yaml")
+    if "kind: StatefulSet" in postgres_yaml:
+        ok("postgres.yaml uses StatefulSet")
+    else:
+        fail("postgres.yaml must use StatefulSet, not Deployment")
+
+    # HPA must reference the backend.
+    hpa_yaml = read("k8s/base/hpa.yaml")
+    if "backend" in hpa_yaml.lower():
+        ok("hpa.yaml references backend")
+    else:
+        warn("hpa.yaml does not appear to reference backend deployment")
+
+    # VPA must exist (recommender mode).
+    vpa_yaml = read("k8s/base/vpa.yaml")
+    if "VerticalPodAutoscaler" in vpa_yaml:
+        ok("vpa.yaml contains VerticalPodAutoscaler resource")
+    else:
+        fail("vpa.yaml missing or does not contain VerticalPodAutoscaler")
