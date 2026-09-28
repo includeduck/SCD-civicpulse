@@ -36,7 +36,17 @@ Citizens submit free text, a location and an optional contact (`reporter_contact
 
 A complaint describes a public-infrastructure problem at a place, such as a burst main on Street 12. After redaction, what reaches the provider is roughly what a citizen would post on a public noticeboard. Operators still get the full, unredacted text from our own database. Anyone for whom even this is too much can run `TRIAGE_PROVIDER=ollama`, and no complaint data leaves the machine.
 
-> **TODO (team, before submission):** check the hosted provider's current data-retention and training-use terms on its live policy page, and cite what you saw here, with the date. Don't rely on memory or on this document: the assignment requires citing the terms as observed.
+### Hosted Provider (Groq) Terms of Service & Privacy Policy
+
+Verified on **2026-09-28** from Groq's official policies ([Groq Privacy Policy](https://groq.com/privacy-policy/) and [Groq Console Privacy & Data Controls](https://console.groq.com/docs/privacy)):
+
+1. **No Model Training on Customer Data:** Groq explicitly commits that customer inputs (prompts) and outputs (completions) are **never** used to train, retrain, or fine-tune AI foundation models or services without explicit customer instruction or consent.
+2. **Inference Data Retention:** For standard inference API requests, Groq does not retain prompts or completions by default.
+3. **Operational Logs & Abuse Monitoring:** In the default tier, Groq may temporarily retain input and output payloads for up to **30 days** solely for system reliability, debugging API failures, and monitoring service abuse (e.g. rate-limit bypass), after which they are purged.
+4. **Zero Data Retention (ZDR):** Organizations requiring strict compliance can enable Zero Data Retention (ZDR) via Data Controls in the Groq Console, which completely disables even the 30-day diagnostic logging.
+5. **Usage Metadata:** Only non-content operational telemetry (token counts, request latency, HTTP status codes, timestamps) is stored for account usage and billing.
+
+Because our PII filter (`redact_pii()`) strips phone numbers and email addresses before submission and `reporter_contact` is never transmitted to Groq, the remaining exposure is limited to localized municipal problem descriptions that Groq retains for at most 30 days without model training.
 
 ## Consequences
 
