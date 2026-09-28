@@ -401,32 +401,72 @@ def check_compose_prod() -> None:
 # ---------------------------------------------------------------------------
 
 
+def extract_probe_block(yaml_text: str, probe_name: str) -> str | None:
+    """Extract the indented YAML block of a specific probe."""
+    lines = yaml_text.splitlines()
+    in_probe = False
+    base_indent = -1
+    probe_lines: list[str] = []
+    for line in lines:
+        if not in_probe:
+            m = re.match(rf"^(\s*){probe_name}:", line)
+            if m:
+                in_probe = True
+                base_indent = len(m.group(1))
+        else:
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            indent = len(line) - len(line.lstrip())
+            if indent <= base_indent:
+                break
+            probe_lines.append(stripped)
+    return "\n".join(probe_lines) if in_probe else None
+
+
+def validate_backend_probes(backend_yaml: str) -> list[tuple[str, str, str]]:
+    """Validate backend probe definitions, returning list of (status, name, detail)."""
+    results: list[tuple[str, str, str]] = []
+    if not backend_yaml:
+        return [("FAIL", "backend.yaml", "file missing or empty")]
+
+    # Startup probe
+    startup = extract_probe_block(backend_yaml, "startupProbe")
+    if startup:
+        results.append(("PASS", "backend.yaml has startupProbe", ""))
+    else:
+        results.append(("FAIL", "backend.yaml missing startupProbe", ""))
+
+    # Liveness probe
+    liveness = extract_probe_block(backend_yaml, "livenessProbe")
+    if not liveness:
+        results.append(("FAIL", "backend.yaml missing livenessProbe", ""))
+    else:
+        if "/ready" in liveness:
+            results.append(("FAIL", "backend.yaml: livenessProbe must NOT use /ready endpoint", ""))
+        elif "/health" in liveness:
+            results.append(("PASS", "backend.yaml: livenessProbe uses /health and does not use /ready", ""))
+        else:
+            results.append(("WARN", "backend.yaml: livenessProbe does not reference /health", ""))
+
+    # Readiness probe
+    readiness = extract_probe_block(backend_yaml, "readinessProbe")
+    if not readiness:
+        results.append(("FAIL", "backend.yaml missing readinessProbe", ""))
+    else:
+        if "/ready" in readiness:
+            results.append(("PASS", "backend.yaml: readinessProbe uses /ready", ""))
+        else:
+            results.append(("WARN", "backend.yaml: readinessProbe does not reference /ready", ""))
+
+    return results
+
+
 def check_probes() -> None:
     print("\n── Health probes ──")
     backend_yaml = read("k8s/base/backend.yaml")
-    if not backend_yaml:
-        fail("k8s/base/backend.yaml not found")
-        return
-
-    if "livenessProbe" in backend_yaml:
-        ok("backend.yaml has livenessProbe")
-    else:
-        fail("backend.yaml missing livenessProbe")
-
-    if "readinessProbe" in backend_yaml:
-        ok("backend.yaml has readinessProbe")
-    else:
-        fail("backend.yaml missing readinessProbe")
-
-    if "/health" in backend_yaml:
-        ok("livenessProbe path includes /health")
-    else:
-        warn("backend.yaml liveness probe does not reference /health")
-
-    if "/ready" in backend_yaml:
-        ok("readinessProbe path includes /ready")
-    else:
-        warn("backend.yaml readiness probe does not reference /ready")
+    for status, name, detail in validate_backend_probes(backend_yaml):
+        _record(status, name, detail)
 
     frontend_yaml = read("k8s/base/frontend.yaml")
     if "livenessProbe" in frontend_yaml or "readinessProbe" in frontend_yaml:
