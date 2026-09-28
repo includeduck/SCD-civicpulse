@@ -599,6 +599,28 @@ def check_backend_structure() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Check: required submission evidence in docs/evidence/
+# ---------------------------------------------------------------------------
+
+_REQUIRED_EVIDENCE = [
+    ("docs/evidence/branch-protection-ruleset.json", "branch protection ruleset"),
+    ("docs/evidence/branch-protection.png", "branch protection capture"),
+    ("docs/evidence/ci-gate.md", "red/green CI gate documentation"),
+    ("docs/evidence/ci-gate-red.png", "red CI gate capture"),
+    ("docs/evidence/ci-gate-green.png", "green CI gate capture"),
+    ("docs/evidence/merge-conflict.md", "merge conflict evidence"),
+    ("docs/evidence/load/before-vpa/hpa-watch.txt", "HPA scaling watch capture"),
+    ("docs/evidence/load/before-vpa/chart.svg", "HPA scaling chart"),
+]
+
+
+def check_evidence() -> None:
+    print("\n── Submission evidence (docs/evidence/) ──")
+    for path, label in _REQUIRED_EVIDENCE:
+        check_file(path, f"evidence: {label} ({path})")
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
@@ -614,6 +636,7 @@ def main() -> int:
     check_probes()
     check_git_attribution()
     check_backend_structure()
+    check_evidence()
 
     passes = sum(1 for s, _, _ in _results if s == "PASS")
     warnings = sum(1 for s, _, _ in _results if s == "WARN")
