@@ -15,6 +15,7 @@ import type {
   Stats,
   Status,
   StatusUpdate,
+  TriageCorrection,
 } from "./types";
 
 async function request(path: string, init: RequestInit = {}): Promise<Response> {
@@ -53,6 +54,13 @@ export function listComplaints(filters: ComplaintFilters = {}, signal?: AbortSig
 export function updateStatus(id: string, status: Status): Promise<Complaint> {
   const body: StatusUpdate = { status };
   return json<Complaint>(`/api/complaints/${encodeURIComponent(id)}/status`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export function updateTriage(id: string, body: TriageCorrection): Promise<Complaint> {
+  return json<Complaint>(`/api/complaints/${encodeURIComponent(id)}/triage`, {
     method: "PATCH",
     body: JSON.stringify(body),
   });

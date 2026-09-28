@@ -56,6 +56,23 @@ export interface paths {
         patch: operations["change_status_api_complaints__complaint_id__status_patch"];
         trace?: never;
     };
+    "/api/complaints/{complaint_id}/triage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Correct a complaint's priority and/or category */
+        patch: operations["correct_triage_api_complaints__complaint_id__triage_patch"];
+        trace?: never;
+    };
     "/api/meta/providers": {
         parameters: {
             query?: never;
@@ -252,6 +269,11 @@ export interface components {
             status: components["schemas"]["Status"];
             /** Text */
             text: string;
+            /**
+             * Triage Corrected At
+             * @description Timestamp when an operator manually corrected category or priority, if any.
+             */
+            triage_corrected_at?: string | null;
             /** Triage Latency Ms */
             triage_latency_ms: number | null;
             triaged_by: components["schemas"]["TriagedBy"] | null;
@@ -356,6 +378,16 @@ export interface components {
             misses: number;
         };
         /**
+         * TriageCorrectionRequest
+         * @description Request body for PATCH /api/complaints/{id}/triage.
+         */
+        TriageCorrectionRequest: {
+            /** @description Corrected category */
+            category?: components["schemas"]["Category"] | null;
+            /** @description Corrected priority */
+            priority?: components["schemas"]["Priority"] | null;
+        };
+        /**
          * TriageOutcome
          * @description One recent triage: which provider answered, how long it took, and whether it fell back.
          */
@@ -400,7 +432,9 @@ export interface components {
             /** Code */
             code: string;
             /** Detail */
-            detail: Record<string, never>[];
+            detail: {
+                [key: string]: unknown;
+            }[];
         };
     };
     responses: never;
@@ -599,6 +633,59 @@ export interface operations {
             };
             /** @description Transition not allowed */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    correct_triage_api_complaints__complaint_id__triage_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                complaint_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TriageCorrectionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComplaintResponse"];
+                };
+            };
+            /** @description Invalid input */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Complaint not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
