@@ -141,6 +141,34 @@ async def update_status(
     return result.scalar_one_or_none()
 
 
+async def update_triage(
+    session: AsyncSession,
+    complaint_id: uuid.UUID,
+    *,
+    category: str | None = None,
+    priority: str | None = None,
+    corrected_at: datetime | None = None,
+) -> Complaint | None:
+    """Update a complaint's category and/or priority and set triage_corrected_at.
+
+    Returns the updated Complaint, or None if no complaint with complaint_id exists.
+    """
+    values: dict[str, Any] = {
+        "updated_at": datetime.now(UTC),
+        "triage_corrected_at": corrected_at or datetime.now(UTC),
+    }
+    if category is not None:
+        values["category"] = category
+    if priority is not None:
+        values["priority"] = priority
+
+    stmt = (
+        update(Complaint).where(Complaint.id == complaint_id).values(**values).returning(Complaint)
+    )
+    result = await session.execute(stmt)
+    return result.scalar_one_or_none()
+
+
 async def stats_by_category(session: AsyncSession) -> list[dict[str, Any]]:
     """Return complaint counts grouped by category.
 
