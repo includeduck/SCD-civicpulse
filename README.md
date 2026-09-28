@@ -59,6 +59,14 @@ A one-shot `migrate` service applies the migrations and loads 32 sample complain
 IMAGE_TAG=<commit-sha> docker compose -f compose.prod.yaml up -d
 ```
 
+### Submission Lint (brief §5.8)
+
+Catch mechanical requirements, secret leaks, probe configurations, and attribution floors before submitting:
+
+```bash
+python scripts/check_submission.py
+```
+
 ---
 
 ## Backend Development
