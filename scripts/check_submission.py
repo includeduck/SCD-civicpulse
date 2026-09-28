@@ -107,3 +107,70 @@ def check_required_files() -> None:
     print("\n── Required files ──")
     for path in _REQUIRED_FILES:
         check_file(path)
+
+
+# ---------------------------------------------------------------------------
+# Check: .env not tracked; no obvious secrets in source
+# ---------------------------------------------------------------------------
+
+_SECRET_PATTERN = re.compile(
+    r"""(
+        (?i:password|secret|api[_-]?key|private[_-]?key|token)\s*=\s*['"]?[A-Za-z0-9+/]{16,}
+        | sk-[A-Za-z0-9]{20,}          # OpenAI / Groq style keys
+        | gsk_[A-Za-z0-9]{20,}         # Groq
+        | -----BEGIN\s+(?:RSA\s+)?PRIVATE\s+KEY
+    )""",
+    re.VERBOSE,
+)
+
+# Files that legitimately document secret *names* (not values).
+_SECRET_ALLOWLIST = {
+    ".env.example",
+    "docs/AI-USAGE.md",
+    "docs/TRIAGE.md",
+    "scripts/check_submission.py",
+}
+
+# Extensions to scan.
+_TEXT_EXTS = {
+    ".py", ".ts", ".tsx", ".js", ".jsx", ".yaml", ".yml",
+    ".toml", ".cfg", ".ini", ".sh", ".md",
+}
+
+_SKIP_DIRS = {".git", "node_modules", "__pycache__", ".ruff_cache", ".venv"}
+
+
+def _tracked_files() -> list[Path]:
+    """All text files under ROOT, skipping binary and ignored dirs."""
+    results: list[Path] = []
+    for p in ROOT.rglob("*"):
+        if any(d in p.parts for d in _SKIP_DIRS):
+            continue
+        if p.is_file() and p.suffix in _TEXT_EXTS:
+            results.append(p)
+    return results
+
+
+def check_env_and_secrets() -> None:
+    print("\n── .env and secrets ──")
+    # .env must not be a tracked file
+    if exists(".env"):
+        fail(".env is present — must not be committed")
+    else:
+        ok(".env absent from repository")
+
+    # Scan for accidental secret values
+    found_secrets = False
+    for p in _tracked_files():
+        rel = str(p.relative_to(ROOT)).replace("\\", "/")
+        if rel in _SECRET_ALLOWLIST:
+            continue
+        try:
+            content = p.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if _SECRET_PATTERN.search(content):
+            fail(f"possible secret in {rel}")
+            found_secrets = True
+    if not found_secrets:
+        ok("no obvious secret values in source files")
