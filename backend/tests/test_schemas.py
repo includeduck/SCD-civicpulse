@@ -16,6 +16,7 @@ from app.schemas.complaint import (
     PriorityCount,
     StatsResponse,
     StatusUpdateRequest,
+    TriageCorrectionRequest,
 )
 
 
@@ -142,3 +143,23 @@ def test_stats_response():
     )
     assert stats.total_complaints == 10
     assert len(stats.by_category) == 2
+
+
+def test_triage_correction_request_valid():
+    req1 = TriageCorrectionRequest(category=Category.water)
+    assert req1.category == Category.water
+    assert req1.priority is None
+
+    req2 = TriageCorrectionRequest(priority=Priority.high)
+    assert req2.category is None
+    assert req2.priority == Priority.high
+
+    req3 = TriageCorrectionRequest(category=Category.roads, priority=Priority.low)
+    assert req3.category == Category.roads
+    assert req3.priority == Priority.low
+
+
+def test_triage_correction_request_empty_fails():
+    with pytest.raises(ValidationError) as exc:
+        TriageCorrectionRequest()
+    assert "At least one of 'priority' or 'category' must be provided." in str(exc.value)
