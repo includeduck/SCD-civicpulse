@@ -22,13 +22,40 @@ All three are differences we actually hit.
 
 ## Q2 — Where your pipeline sits on the CI/CD maturity ladder (Lecture 03, slide 32); justify the rung, name the next rung and what it buys
 
-*TODO (Phases 13–14).*
+Slide 32's ladder has five rungs: **1 Manual deployment → 2 Continuous Integration → 3 Continuous Delivery → 4 Continuous Deployment → 5 Production-grade** ("review · scan · staging · smoke test · approval · rollback · monitor").
+
+**We're on rung 4, Continuous Deployment, with most of rung 5's practices, but not rung 5's target.**
+
+- **Rungs 2–3, done.** Every PR into `dev`/`main` is tested on a clean runner by nine required checks (`.github/workflows/ci.yml`), and `main` only moves through reviewed, green PRs (ruleset 23347090; the gate demonstrably blocks merges, `docs/evidence/ci-gate.md`). Every push to `main` produces the deployable artifact: images tagged by commit SHA in GHCR, with digests and an SBOM (`cd.yml`, `build-push`).
+- **Rung 4, done mechanically.** A push to `main` ships itself: `deploy-k8s` applies the prod overlay pinned to `<image>:<sha>@<digest>` with no human step (`cd.yml`, `scripts/cd_deploy.sh`). That is also slide 33's "build once, deploy the same artifact" (Q3).
+- **Rung 5's practices we already have:**
+
+  | Practice | Where |
+  |---|---|
+  | review | one required approval |
+  | scan | Trivy on both images, failing on fixable HIGH/CRITICAL |
+  | smoke test | through the Ingress after every deploy |
+  | approval | the ruleset |
+  | rollback | two documented, demonstrated methods: ADR 0003, `docs/evidence/k8s-rollback.txt` |
+- **Why not rung 5.** The deploy target is a **throwaway k3d cluster inside the CI runner**, not a production environment users reach. There is **no staging** stage to promote the same artifact through, and **monitoring** stops at a Prometheus `/metrics` endpoint that nothing scrapes, alerts on, or feeds back into a rollback. Our rung-4 "production" is honest about being a rehearsal.
+
+**The next rung, 5, and what it buys:**
+
+1. A persistent **staging** environment that receives the same SHA first, with automated checks before promotion to a persistent production.
+2. **Monitoring that closes the loop.** Prometheus actually scraping `/metrics`, with alerts on the fallback rate, error rate and latency, and the smoke test or alerts triggering the declarative rollback automatically.
+
+It buys the confidence to ship without watching. Today a bad build is caught by tests and by a human noticing; at rung 5 it's caught in staging, or rolled back by the system itself within minutes of reaching production.
 
 ---
 
 ## Q3 — The exact line guaranteeing build-once-deploy-many, and what breaks without it
 
-*TODO (Phases 8, 14): the frontend runtime-configuration line (ADR 0002) and the deploy-by-SHA image reference (ADR 0003).*
+Two lines together, one per half of the promise.
+
+1. **Built once, per commit.** `.github/workflows/cd.yml:71` tags the image `${{ env.REGISTRY }}/backend:${{ github.sha }}`, and `cd.yml:151` passes that same `IMAGE_SHA: ${{ github.sha }}` to the deploy. The deploy never builds: `scripts/cd_deploy.sh:69` pins the prod overlay to `newTag: "$IMAGE_SHA"`, plus the pushed digest, so what runs is `<image>:<sha>@sha256:…`, the exact bytes that passed CI's Trivy scan and tests.
+2. **One image for every environment.** The frontend bundle contains no environment-specific value: there is no `import.meta.env` anywhere in `frontend/src`, and the only per-environment setting is `frontend/nginx/default.conf.template:28`, `proxy_pass ${BACKEND_URL};`, filled in when the container starts (ADR 0002). The backend reads all configuration from its environment.
+
+**What breaks without it.** If each environment rebuilt its own image (or baked in its own API URL), the bytes tested in CI would not be the bytes running in production; a dependency could resolve differently between the two builds. "What is production running?" would have no exact answer. Rolling back would mean rebuilding an old commit and hoping it builds the same. With `:latest` instead of a SHA it's worse still: the tag moves under you, so a rollback to `:latest` rolls *forward* to whatever was pushed last (ADR 0003).
 
 ---
 

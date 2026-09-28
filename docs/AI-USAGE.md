@@ -15,7 +15,7 @@
 | Tool | Used by | Period | For |
 |------|---------|--------|-----|
 | **Antigravity** (Google DeepMind) | team | Phase 0, and likely Phases 1–2 (*team to confirm*) | Repository scaffold, docs stubs, initial FastAPI skeleton, model, migration and seed |
-| **Claude Code** (Anthropic, Claude Opus model), desktop app | repository owner | 2026-09-26 onwards | Plan review, defect fixes, Phases 3–13 implementation, tests, docs, GitHub Issues and PR descriptions, verification runs |
+| **Claude Code** (Anthropic, Claude Opus model), desktop app | repository owner | 2026-09-26 onwards | Plan review, defect fixes, Phases 3–14 implementation, tests, docs, GitHub Issues and PR descriptions, verification runs |
 | *AI assistant used to draft PR reviews* | reviewer | from PR #15 | *Team to name the tool.* The review bodies on #15, #17, #19, #21 are AI-generated reports; they link to local `file:///` paths |
 
 ---
@@ -37,6 +37,7 @@
 | Phase 12 autoscaling | Wrote the k6 script (arrival-rate), the HPA sampler, the run and analysis scripts (lag table and SVG chart), the VPA object and pinned recommender install; ran both load tests, applied the VPA target, and wrote Q5 and Q6 from the measurements | Owner asked for Phase 12. *Team to be able to explain the lag breakdown and the HPA/VPA conflict in their own words at the viva* |
 | Phase 13 CI | Wrote `ci.yml` (SHA-pinned actions, digest-pinned Trivy and kubeconform), `scripts/ci_integration.sh` and `.trivyignore`; fixed the mypy and formatting debts, and the frontend image's 40 fixable CVEs. **A first version of the integration script shared the dev stack's Compose project and deleted the owner's local database volumes**; it was rewritten to run as its own project with its own env file | Owner asked for Phase 13. *Team to add the required status checks to the ruleset and capture the red/green gate evidence* |
 | Security audit (pre-CD) | Ran Trivy image, fs, rootfs and misconfig scans, a full-history secret search and a code review; fixed the Docker Hub image-name hole, the missing API body limit, pytest's CVE, and Postgres and service-account hardening; wrote `docs/SECURITY-AUDIT.md` | Owner asked for a check for hidden vulnerabilities before Phase 14. *Team to decide on authentication for the dashboard before any real deployment (listed as accepted risk)* |
+| Phase 14 CD | Wrote `cd.yml`, `release.yml` and `scripts/cd_deploy.sh`, and made CI callable; tested the deploy script on k3d with the prod overlay, and both rollback methods with the real previous build; updated ADR 0003 and answered engineering-notes Q2 (from the owner's copy of Lecture 03, slide 32) and Q3 | Owner asked for Phase 14, stacked on #41 while the partner was unavailable. *The first real CD run happens on the first merge to main* |
 | Verification | Ran the tests against real PostgreSQL 16 and Redis 7 in Docker, a two-replica rate-limit check, the AOF restart check and the SIGTERM drain check, and a browser run of the frontend image against the real stack (submit, 409, X-Cache MISS→HIT); stress-ran the suite to find a flaky test | Owner started Docker and installed Python 3.12 when asked |
 | Docs | TRIAGE.md, RUNBOOK.md, ADR 0001 and 0004 updates, the engineering-notes restructure, the README, this file | *Team to review wording and add their own reflections* |
 
