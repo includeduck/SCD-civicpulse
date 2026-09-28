@@ -174,3 +174,44 @@ def check_env_and_secrets() -> None:
             found_secrets = True
     if not found_secrets:
         ok("no obvious secret values in source files")
+
+
+# ---------------------------------------------------------------------------
+# Check: required GitHub Actions workflows
+# ---------------------------------------------------------------------------
+
+_REQUIRED_WORKFLOWS = {
+    "ci.yml": "CI (lint, test, build, scan, manifests, integration)",
+    "cd.yml": "CD (test → build-push → deploy on main)",
+    "release.yml": "Release (semver tags → publish images + GitHub Release)",
+}
+
+
+def check_workflows() -> None:
+    print("\n── GitHub Actions workflows ──")
+    wf_dir = ROOT / ".github" / "workflows"
+    if not wf_dir.is_dir():
+        fail(".github/workflows/ directory missing")
+        return
+    for fname, label in _REQUIRED_WORKFLOWS.items():
+        path = wf_dir / fname
+        if path.exists():
+            ok(f"{fname} present ({label})")
+        else:
+            fail(f"{fname} missing — {label}")
+
+    # All action pins should use a SHA digest (@abc1234…), not a mutable tag.
+    unpinned: list[str] = []
+    for path in wf_dir.glob("*.yml"):
+        for line in path.read_text(encoding="utf-8").splitlines():
+            # Match "uses: owner/repo@REF" where REF is NOT a 40-hex SHA
+            m = re.search(r"uses:\s+\S+@([A-Za-z0-9._-]+)", line)
+            if m:
+                ref = m.group(1)
+                if not re.fullmatch(r"[0-9a-f]{40}", ref):
+                    unpinned.append(f"{path.name}: {line.strip()}")
+    if unpinned:
+        for u in unpinned:
+            warn(f"action not pinned by SHA — {u}")
+    else:
+        ok("all actions pinned by 40-hex SHA digest")
