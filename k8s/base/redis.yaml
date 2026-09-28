@@ -41,6 +41,8 @@ spec:
     metadata:
       labels: { app.kubernetes.io/name: redis }
     spec:
+      # No Kubernetes API token: nothing in this pod talks to the API server.
+      automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
         runAsUser: 999               # the image's redis user

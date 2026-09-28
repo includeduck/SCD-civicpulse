@@ -17,9 +17,13 @@
 
 name: civicpulse
 
+# Our images are named under our own registry namespace, never a bare
+# "civicpulse/..." (which means Docker Hub, where the "civicpulse" account
+# belongs to someone else), and are only ever built here, never pulled.
 x-backend-build: &backend-build
   build: ./backend
-  image: civicpulse/backend:dev
+  image: ghcr.io/includeduck/scd-civicpulse/backend:dev
+  pull_policy: build
 
 x-backend-env: &backend-env
   # Built from POSTGRES_* so the password lives in exactly one place (.env).
@@ -121,7 +125,8 @@ services:
 
   frontend:
     build: ./frontend
-    image: civicpulse/frontend:dev
+    image: ghcr.io/includeduck/scd-civicpulse/frontend:dev
+    pull_policy: build
     restart: unless-stopped
     environment:
       BACKEND_URL: http://backend:8000

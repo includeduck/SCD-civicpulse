@@ -20,6 +20,8 @@ spec:
     spec:
       # Never: each retry is a new pod, and failed ones stay behind for `kubectl logs`.
       restartPolicy: Never
+      # No Kubernetes API token: nothing in this pod talks to the API server.
+      automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
@@ -43,7 +45,7 @@ spec:
             capabilities: { drop: [ALL] }
       containers:
         - name: migrate
-          image: civicpulse/backend:dev
+          image: ghcr.io/includeduck/scd-civicpulse/backend:dev
           command: ["alembic", "upgrade", "head"]
           envFrom:
             - configMapRef: { name: backend-config }

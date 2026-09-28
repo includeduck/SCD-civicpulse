@@ -248,6 +248,7 @@ Evidence captured on the running cluster: [network isolation](docs/evidence/k8s-
 - [AI Usage](docs/AI-USAGE.md)
 - [Triage Design](docs/TRIAGE.md)
 - [Test Strategy](docs/TESTING.md)
+- [Security Audit](docs/SECURITY-AUDIT.md)
 - [ADR 0001 — Provider Interface](docs/adr/0001-provider-interface.md)
 - [ADR 0002 — Frontend Runtime Config](docs/adr/0002-frontend-runtime-config.md)
 - [ADR 0003 — Deploy by SHA](docs/adr/0003-deploy-by-sha.md)

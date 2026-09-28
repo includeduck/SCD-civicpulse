@@ -5,7 +5,7 @@ and every connection error counts as a failure. A zero-downtime rollout must
 end with ``failed: 0``.
 
   python scripts/zero_downtime_check.py --url http://civicpulse.localhost:8081 --seconds 90 &
-  kubectl -n civicpulse set image deploy/backend backend=civicpulse/backend:<new-tag> ...
+  kubectl -n civicpulse set image deploy/backend backend=ghcr.io/includeduck/scd-civicpulse/backend:<new-tag> ...
 
 ``--resolve-to 127.0.0.1`` connects to that address whatever the URL's host,
 for machines where *.localhost doesn't resolve.

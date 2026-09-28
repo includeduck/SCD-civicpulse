@@ -62,6 +62,9 @@ class Settings(BaseSettings):
     forwarded_allow_ips: str = "127.0.0.1"
     rate_limit_requests: int = 10  # requests per window
     rate_limit_window: int = 60  # seconds
+    # Largest accepted request body. A complaint is at most ~10 KB of JSON
+    # (2000 characters of text); 64 KiB matches nginx's client_max_body_size.
+    max_request_body_bytes: int = 65536
 
     # ── Triage ────────────────────────────────────────────────────
     # Values follow plan §9 (factory). Provider *labels* stored in

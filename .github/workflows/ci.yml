@@ -157,14 +157,14 @@ jobs:
         with:
           context: ${{ matrix.image }}
           push: false
-          tags: civicpulse/${{ matrix.image }}:ci-${{ github.sha }}
+          tags: ghcr.io/includeduck/scd-civicpulse/${{ matrix.image }}:ci-${{ github.sha }}
           outputs: type=docker,dest=${{ runner.temp }}/${{ matrix.image }}.tar
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,scope=${{ matrix.image }},mode=max
       - name: Image size
         run: |
           docker load -i "${{ runner.temp }}/${{ matrix.image }}.tar"
-          docker image ls "civicpulse/${{ matrix.image }}:ci-${{ github.sha }}" --format '{{.Repository}}:{{.Tag}} {{.Size}}' | tee -a "$GITHUB_STEP_SUMMARY"
+          docker image ls "ghcr.io/includeduck/scd-civicpulse/${{ matrix.image }}:ci-${{ github.sha }}" --format '{{.Repository}}:{{.Tag}} {{.Size}}' | tee -a "$GITHUB_STEP_SUMMARY"
       # Handed to the scan job only; this is not a published artifact.
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
