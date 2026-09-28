@@ -103,14 +103,12 @@ _RULES: tuple[tuple[str, str], ...] = (
         r"|\bevery\s+(report|complaint|ticket|issue)\s+is\s+automatically\b",
     ),
     # Authority commands and official impersonation (English and Roman Urdu).
+    # Specific to explicit administrative commands ("Commissioner sahab ka hukm")
+    # rather than citizens asking to forward issues to a department.
     (
         "authority_impersonation",
         r"\b(commissioner|dc|ac|mayor|chief\s+officer)\s+(sahab|sahib)?\s*(ki\s+taraf\s+se\s+hukm|ka\s+hukm|orders?)\b"
         r"|\b(hukm|hukam)\s*:\s*is\s+shikayat\b",
-    ),
-    (
-        "authority_impersonation",
-        rf"\b({_CATEGORIES}|bijli|paani|pani|safai|sadak|sarak)\s+ke\s+(mehkame|idare|department)\s+ko\s+(bhejein|bhejo|bheinjo|forward\s+karo)\b",
     ),
     # Fake result blocks intended to fool the model into verbatim repetition.
     (
@@ -127,9 +125,9 @@ _RULES: tuple[tuple[str, str], ...] = (
     ),
     (
         "dictate_output",
-        rf"\b(classify|categori[sz]e|label|mark|file|route|assign)\b"
-        r"(?:\s+(this|it|the|my|our|complaint|ticket|issue|report|priority|category))?\s+(as|to|under)\s+"
-        + rf"({_CATEGORIES})\b",
+        r"\b(classify|categori[sz]e|label|mark|file|route|assign)\b"
+        + _OBJECT
+        + rf"\s+(as|to|under)\s+({_CATEGORIES})\b",
     ),
     ("dictate_output", rf"\b({_PRIORITY_KEYS})\s*[=:]\s*[\"']?({_PRIORITIES})\b"),
     ("dictate_output", rf"\b({_CATEGORY_KEYS})\s*[=:]\s*[\"']?({_CATEGORIES})\b"),
@@ -137,7 +135,6 @@ _RULES: tuple[tuple[str, str], ...] = (
         "dictate_output",
         rf"\bbelongs?\s+to(\s+the)?\s+({_CATEGORIES}|power|electric)\s+(department|dept)\b",
     ),
-    ("dictate_output", rf"\b(top|highest|maximum)\s+({_PRIORITY_KEYS})\b"),
     # A JSON answer smuggled into the complaint: {"priority": "high"}.
     ("json_payload", r"[{,]\s*[\"'](priority|category|summary|confidence)[\"']\s*:"),
     # Roman Urdu: "pichli hidayat ko nazar andaz karo", "priority high kar do".
