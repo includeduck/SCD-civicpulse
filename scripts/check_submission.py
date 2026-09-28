@@ -316,3 +316,42 @@ def check_compose_prod() -> None:
         fail("compose.prod.yaml contains :dev image tag — prod must use a SHA-tagged image")
     else:
         ok("compose.prod.yaml: no :dev image tags")
+
+
+# ---------------------------------------------------------------------------
+# Check: liveness and readiness probes in backend.yaml
+# ---------------------------------------------------------------------------
+
+
+def check_probes() -> None:
+    print("\n── Health probes ──")
+    backend_yaml = read("k8s/base/backend.yaml")
+    if not backend_yaml:
+        fail("k8s/base/backend.yaml not found")
+        return
+
+    if "livenessProbe" in backend_yaml:
+        ok("backend.yaml has livenessProbe")
+    else:
+        fail("backend.yaml missing livenessProbe")
+
+    if "readinessProbe" in backend_yaml:
+        ok("backend.yaml has readinessProbe")
+    else:
+        fail("backend.yaml missing readinessProbe")
+
+    if "/health" in backend_yaml:
+        ok("livenessProbe path includes /health")
+    else:
+        warn("backend.yaml liveness probe does not reference /health")
+
+    if "/ready" in backend_yaml:
+        ok("readinessProbe path includes /ready")
+    else:
+        warn("backend.yaml readiness probe does not reference /ready")
+
+    frontend_yaml = read("k8s/base/frontend.yaml")
+    if "livenessProbe" in frontend_yaml or "readinessProbe" in frontend_yaml:
+        ok("frontend.yaml has at least one health probe")
+    else:
+        warn("frontend.yaml has no liveness or readiness probe")
