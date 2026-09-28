@@ -355,3 +355,38 @@ def check_probes() -> None:
         ok("frontend.yaml has at least one health probe")
     else:
         warn("frontend.yaml has no liveness or readiness probe")
+
+
+# ---------------------------------------------------------------------------
+# Check: .mailmap present; git shortlog; at least 2 contributors
+# ---------------------------------------------------------------------------
+
+import subprocess  # noqa: E402
+
+
+def check_git_attribution() -> None:
+    print("\n── Git attribution ──")
+    check_file(".mailmap", ".mailmap (consolidates author aliases)")
+
+    try:
+        result = subprocess.run(
+            ["git", "shortlog", "-sn", "--no-merges"],
+            capture_output=True,
+            text=True,
+            cwd=ROOT,
+            timeout=15,
+        )
+        lines = [ln.strip() for ln in result.stdout.splitlines() if ln.strip()]
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        warn("git not available — cannot check contributor counts")
+        return
+
+    if len(lines) < 2:
+        fail(f"only {len(lines)} contributor(s) in shortlog — assignment requires ≥ 2")
+    else:
+        ok(f"git shortlog shows {len(lines)} contributors")
+        for line in lines:
+            print(f"       {line}")
+
+    total = sum(int(ln.split()[0]) for ln in lines if ln.split()[0].isdigit())
+    ok(f"total commits (no-merges): {total}")
