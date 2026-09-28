@@ -14,7 +14,7 @@ import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.models.complaint import Base, Category, Priority, Status
+from app.models.complaint import Base, Category, Complaint, Priority, Status
 from app.repositories.complaint import (
     count_complaints,
     create_complaint,
@@ -25,6 +25,7 @@ from app.repositories.complaint import (
     stats_by_priority,
     stats_by_status,
     update_status,
+    update_triage,
 )
 from scripts.seed_db import COMPLAINTS, seed_uuid
 
@@ -313,3 +314,38 @@ async def test_seed_idempotency(db_session: AsyncSession):
     count_second_run = await count_complaints(db_session)
     assert skipped_count == len(COMPLAINTS)
     assert count_second_run == count_first_run
+
+
+@pytest.mark.asyncio
+async def test_update_triage_repository(db_session: AsyncSession):
+    cid = uuid.uuid4()
+    complaint = Complaint(
+        id=cid,
+        text="Valid complaint text description",
+        location="Some valid location",
+        category=Category.water,
+        priority=Priority.high,
+        status=Status.open,
+    )
+    db_session.add(complaint)
+    await db_session.commit()
+
+    updated = await update_triage(
+        db_session,
+        cid,
+        category=Category.roads,
+        priority=Priority.low,
+    )
+    assert updated is not None
+    assert updated.category == Category.roads
+    assert updated.priority == Priority.low
+    assert updated.triage_corrected_at is not None
+
+    # Test update_triage with non-existent complaint
+    missing = await update_triage(
+        db_session,
+        uuid.uuid4(),
+        category=Category.sanitation,
+        priority=None,
+    )
+    assert missing is None
