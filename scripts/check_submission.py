@@ -278,6 +278,29 @@ _REQUIRED_K8S_BASE = [
 ]
 
 
+def validate_postgres_manifest(postgres_yaml: str) -> list[tuple[str, str, str]]:
+    results: list[tuple[str, str, str]] = []
+    if not postgres_yaml:
+        return [("FAIL", "postgres.yaml", "file missing or empty")]
+
+    if "kind: StatefulSet" in postgres_yaml:
+        results.append(("PASS", "postgres.yaml uses StatefulSet", ""))
+    else:
+        results.append(("FAIL", "postgres.yaml must use StatefulSet, not Deployment", ""))
+
+    if "volumeClaimTemplates:" in postgres_yaml:
+        results.append(("PASS", "postgres.yaml specifies volumeClaimTemplates", ""))
+    else:
+        results.append(("FAIL", "postgres.yaml missing volumeClaimTemplates", ""))
+
+    if re.search(r"type:\s*(?:NodePort|LoadBalancer)", postgres_yaml):
+        results.append(("FAIL", "postgres.yaml database Service must not be NodePort or LoadBalancer", ""))
+    else:
+        results.append(("PASS", "postgres.yaml database Service is ClusterIP (not NodePort/LoadBalancer)", ""))
+
+    return results
+
+
 def check_kubernetes() -> None:
     print("\n── Kubernetes manifests ──")
     for path in _REQUIRED_OVERLAYS:
@@ -298,12 +321,10 @@ def check_kubernetes() -> None:
     else:
         ok("no :latest tags in Kubernetes manifests")
 
-    # Postgres must be a StatefulSet (not a Deployment).
+    # Postgres StatefulSet and Service checks
     postgres_yaml = read("k8s/base/postgres.yaml")
-    if "kind: StatefulSet" in postgres_yaml:
-        ok("postgres.yaml uses StatefulSet")
-    else:
-        fail("postgres.yaml must use StatefulSet, not Deployment")
+    for status, name, detail in validate_postgres_manifest(postgres_yaml):
+        _record(status, name, detail)
 
     # HPA must reference the backend.
     hpa_yaml = read("k8s/base/hpa.yaml")
