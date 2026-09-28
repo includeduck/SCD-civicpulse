@@ -229,3 +229,12 @@ What this tells us:
 End-to-end run on 2026-09-27 (uvicorn, PostgreSQL 16, Redis 7, `TRIAGE_PROVIDER=simulated`): the same complaint submitted three times → 1 miss, 2 hits, `hit_rate = 0.6667`; cached lookups took about 1 ms against 11 ms for the first call. The team should record the hit rate from the real demo run (with the hosted provider) here before submission.
 
 **Resilience contract:** if the provider always raises, `POST /api/complaints` still returns `201` with `triaged_by == "rules:fallback"` (`tests/test_triage_resilience.py::test_7_…`).
+
+## Operator Triage Correction
+
+Because small/offline models or keyword rules can misclassify complaints, CivicPulse allows operators to manually correct a complaint's category and/or priority via `PATCH /api/complaints/{id}/triage` (Issue #46).
+
+- **Payload:** `{"category"?: Category, "priority"?: Priority}` (at least one field required).
+- **Metadata:** When corrected, `triage_corrected_at` is set to the current UTC timestamp. The original `triaged_by` provider and AI summary are preserved for auditing and model evaluation.
+- **Cache:** Correcting a complaint's triage immediately invalidates the Redis `StatsCache` so aggregate statistics stay accurate.
+- **Dashboard:** The operations dashboard provides operator controls to adjust category and priority, displays error messages verbatim, and indicates when triage was manually corrected.

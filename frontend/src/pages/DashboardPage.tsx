@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router";
-import { listComplaints, updateStatus } from "../api/client";
+import { listComplaints, updateStatus, updateTriage } from "../api/client";
 import { CATEGORIES, PRIORITIES, STATUSES } from "../api/contract";
 import { ApiError } from "../api/errors";
 import type { Category, Complaint, ComplaintFilters, ComplaintList, Priority, Status } from "../api/types";
@@ -194,6 +194,21 @@ function ComplaintRow({
 }) {
   const [pending, setPending] = useState<Status | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [category, setCategory] = useState<Category>(complaint.category);
+  const [priority, setPriority] = useState<Priority>(complaint.priority);
+  const [triagePending, setTriagePending] = useState(false);
+  const [triageError, setTriageError] = useState<string | null>(null);
+
+  const [prevCategory, setPrevCategory] = useState(complaint.category);
+  const [prevPriority, setPrevPriority] = useState(complaint.priority);
+  if (complaint.category !== prevCategory) {
+    setPrevCategory(complaint.category);
+    setCategory(complaint.category);
+  }
+  if (complaint.priority !== prevPriority) {
+    setPrevPriority(complaint.priority);
+    setPriority(complaint.priority);
+  }
 
   async function move(target: Status) {
     setPending(target);
@@ -209,7 +224,23 @@ function ComplaintRow({
     }
   }
 
+  async function saveTriage() {
+    setTriagePending(true);
+    setTriageError(null);
+    try {
+      onUpdated(await updateTriage(complaint.id, { category, priority }));
+    } catch (caught) {
+      const apiError = caught instanceof ApiError ? caught : new ApiError(0, String(caught));
+      setTriageError(apiError.message);
+    } finally {
+      setTriagePending(false);
+    }
+  }
+
   const headingId = `complaint-${complaint.id}`;
+  const categorySelectId = `triage-cat-${complaint.id}`;
+  const prioritySelectId = `triage-pri-${complaint.id}`;
+
   return (
     <li className="card complaint" aria-labelledby={headingId}>
       <div className="complaint-head">
@@ -221,7 +252,7 @@ function ComplaintRow({
       <p className="complaint-text">{complaint.text}</p>
       {complaint.ai_summary && (
         <p className="complaint-summary">
-          <span className="muted">Summary:</span> {complaint.ai_summary}
+          <span className="muted">AI summary of the report:</span> {complaint.ai_summary}
         </p>
       )}
       <div className="badges">
@@ -229,7 +260,58 @@ function ComplaintRow({
         <Badge kind="priority" value={complaint.priority} />
         <Badge kind="status" value={complaint.status} />
         <span className="muted small">{providerLabel(complaint.triaged_by)}</span>
+        {complaint.triage_corrected_at && (
+          <span className="muted small" title={`Corrected at ${formatDate(complaint.triage_corrected_at)}`}>
+            (triage corrected)
+          </span>
+        )}
       </div>
+
+      <div className="triage-correction" aria-label="Triage correction">
+        <label htmlFor={categorySelectId}>Correct category</label>
+        <select
+          id={categorySelectId}
+          aria-label="Correct category"
+          value={category}
+          disabled={triagePending}
+          onChange={(e) => setCategory(e.target.value as Category)}
+        >
+          {CATEGORIES.map((c) => (
+            <option key={c} value={c}>
+              {humanize(c)}
+            </option>
+          ))}
+        </select>
+
+        <label htmlFor={prioritySelectId}>Correct priority</label>
+        <select
+          id={prioritySelectId}
+          aria-label="Correct priority"
+          value={priority}
+          disabled={triagePending}
+          onChange={(e) => setPriority(e.target.value as Priority)}
+        >
+          {PRIORITIES.map((p) => (
+            <option key={p} value={p}>
+              {humanize(p)}
+            </option>
+          ))}
+        </select>
+
+        <button
+          type="button"
+          className="secondary"
+          disabled={triagePending}
+          onClick={() => void saveTriage()}
+        >
+          {triagePending ? "Saving triage..." : "Save triage"}
+        </button>
+      </div>
+      {triageError && (
+        <p className="alert inline" role="alert">
+          {triageError}
+        </p>
+      )}
 
       <div className="actions" role="group" aria-label={`Change status of complaint at ${complaint.location}`}>
         {complaint.allowed_transitions.length === 0 ? (

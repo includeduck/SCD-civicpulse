@@ -152,3 +152,19 @@ def test_running_migrations_does_not_mute_the_apps_loggers():
     _alembic("upgrade", "head")  # runs env.py's fileConfig again, in this process
     for name in ("app.services.triage", "app.core.middleware"):
         assert logging.getLogger(name).disabled is False, name
+
+
+async def test_migration_adds_triage_corrected_at_column(session: AsyncSession):
+    """Proves the 0002_triage_correction migration creates triage_corrected_at in PostgreSQL."""
+    res = await session.execute(
+        text(
+            "SELECT column_name, data_type, is_nullable "
+            "FROM information_schema.columns "
+            "WHERE table_name = 'complaints' AND column_name = 'triage_corrected_at'"
+        )
+    )
+    col = res.fetchone()
+    assert col is not None
+    assert col[0] == "triage_corrected_at"
+    assert "timestamp" in col[1]
+    assert col[2] == "YES"

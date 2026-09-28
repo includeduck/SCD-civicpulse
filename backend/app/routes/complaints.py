@@ -10,13 +10,14 @@ from typing import Annotated
 
 from fastapi import APIRouter, Query, Request, status
 
-from app.core.dependencies import ComplaintServiceDep, StatusServiceDep
+from app.core.dependencies import ComplaintServiceDep, StatusServiceDep, TriageCorrectionServiceDep
 from app.models.complaint import Category, Priority, Status
 from app.schemas.complaint import (
     ComplaintCreate,
     ComplaintListResponse,
     ComplaintResponse,
     StatusUpdateRequest,
+    TriageCorrectionRequest,
 )
 from app.schemas.errors import INVALID_TRANSITION, NOT_FOUND, RATE_LIMITED, VALIDATION_ERROR
 
@@ -80,3 +81,21 @@ async def change_status(
     complaint_id: uuid.UUID, body: StatusUpdateRequest, service: StatusServiceDep
 ) -> ComplaintResponse:
     return await service.change_status(complaint_id, body.status)
+
+
+@router.patch(
+    "/{complaint_id}/triage",
+    response_model=ComplaintResponse,
+    responses={**VALIDATION_ERROR, **NOT_FOUND},
+    summary="Correct a complaint's priority and/or category",
+)
+async def correct_triage(
+    complaint_id: uuid.UUID,
+    body: TriageCorrectionRequest,
+    service: TriageCorrectionServiceDep,
+) -> ComplaintResponse:
+    return await service.correct_triage(
+        complaint_id,
+        category=body.category,
+        priority=body.priority,
+    )

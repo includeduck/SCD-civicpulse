@@ -8,7 +8,7 @@ UNREACHABLE = "postgresql+asyncpg://nobody:nothing@127.0.0.1:1/none"
 
 
 def test_expected_head_is_the_newest_migration():
-    assert expected_head() == "0001_initial"
+    assert expected_head() == "0002_triage_correction"
 
 
 async def test_unreachable_database_counts_as_not_migrated():

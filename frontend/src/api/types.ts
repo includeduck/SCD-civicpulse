@@ -18,11 +18,13 @@ export type TriagedBy = Schemas["TriagedBy"];
 type CreateOp = paths["/api/complaints"]["post"];
 type ListOp = paths["/api/complaints"]["get"];
 type StatusOp = paths["/api/complaints/{complaint_id}/status"]["patch"];
+type TriageOp = paths["/api/complaints/{complaint_id}/triage"]["patch"];
 
 export type ComplaintCreate = JsonOf<CreateOp["requestBody"]>;
 export type Complaint = JsonOf<CreateOp["responses"][201]>;
 export type ComplaintList = JsonOf<ListOp["responses"][200]>;
 export type ComplaintFilters = NonNullable<ListOp["parameters"]["query"]>;
 export type StatusUpdate = JsonOf<StatusOp["requestBody"]>;
+export type TriageCorrection = JsonOf<TriageOp["requestBody"]>;
 export type Stats = JsonOf<paths["/api/stats"]["get"]["responses"][200]>;
 export type Providers = JsonOf<paths["/api/meta/providers"]["get"]["responses"][200]>;

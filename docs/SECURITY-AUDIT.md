@@ -32,7 +32,7 @@ Everything was verified on the running k3d cluster and the Compose stack after t
 
 | Finding | Why it's accepted |
 |---|---|
-| **The API has no authentication.** Anyone who can reach it can list complaints and **change a complaint's status** (`PATCH /api/complaints/{id}/status`). | Out of scope for the assignment, which specifies a public intake and an operations dashboard but no user model. Mitigations in place: `reporter_contact` is never returned (ADR 0004). Complaint *submission* is rate-limited per client; status changes are **not**. Before any real deployment, the dashboard and the PATCH route need authentication, e.g. an OIDC-authenticating proxy or Ingress middleware in front of `/api/complaints/*/status`. |
+| **The API has no authentication.** Anyone who can reach it can list complaints, **change a complaint's status** (`PATCH /api/complaints/{id}/status`), or **correct triage** (`PATCH /api/complaints/{id}/triage`). | Out of scope for the assignment, which specifies a public intake and an operations dashboard but no user model. Mitigations in place: `reporter_contact` is never returned (ADR 0004). Complaint *submission* is rate-limited per client; operator mutations are **not**. Before any real deployment, the dashboard and the PATCH routes need authentication, e.g. an OIDC-authenticating proxy or Ingress middleware in front of `/api/complaints/*/{status,triage}`. |
 | **Oversized bodies through the Ingress get a dropped connection, not a 413 body.** | Uvicorn closes the connection when it answers before reading the body, and Traefik passes that on. The protection itself works (0.2 ms, nothing buffered). The Compose/nginx path returns a clean 413. Fixing the cosmetics would tie the manifests to Traefik-only resources. |
 | Trivy KSV-0125 "untrusted registry" on `ghcr.io/includeduck/...` | Trivy only trusts a built-in list of cloud registries. Our images now come from our own namespace (finding 1), and prod pins them to a commit SHA. |
 | Trivy KSV-01010 "`LOG_LEVEL` is sensitive" | False positive: a keyword match on a log level. |
@@ -51,6 +51,6 @@ Everything was verified on the running k3d cluster and the Compose stack after t
 
 ## Recommended before a real deployment (not done)
 
-1. Authentication for the dashboard and the status-change route.
+1. Authentication for the dashboard and operator mutation routes (`status` and `triage`).
 2. Rate-limit or cache GET endpoints, or rely on the HPA plus an Ingress-level rate limit. Today only `POST /api/complaints` is limited.
 3. A dependency-update bot (Dependabot or Renovate) for the pinned images and packages, so pins don't quietly go stale. The Starlette CVEs were exactly that.

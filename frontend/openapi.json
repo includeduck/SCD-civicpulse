@@ -164,6 +164,19 @@
             "title": "Text",
             "type": "string"
           },
+          "triage_corrected_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Timestamp when an operator manually corrected category or priority, if any.",
+            "title": "Triage Corrected At"
+          },
           "triage_latency_ms": {
             "anyOf": [
               {
@@ -446,6 +459,35 @@
           "hit_rate"
         ],
         "title": "TriageCacheStats",
+        "type": "object"
+      },
+      "TriageCorrectionRequest": {
+        "description": "Request body for PATCH /api/complaints/{id}/triage.",
+        "properties": {
+          "category": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Category"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Corrected category"
+          },
+          "priority": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Priority"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Corrected priority"
+          }
+        },
+        "title": "TriageCorrectionRequest",
         "type": "object"
       },
       "TriageOutcome": {
@@ -886,6 +928,79 @@
           }
         },
         "summary": "Move a complaint through the status state machine",
+        "tags": [
+          "Complaints"
+        ]
+      }
+    },
+    "/api/complaints/{complaint_id}/triage": {
+      "patch": {
+        "operationId": "correct_triage_api_complaints__complaint_id__triage_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "complaint_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Complaint Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TriageCorrectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComplaintResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            },
+            "description": "Invalid input"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Complaint not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Correct a complaint's priority and/or category",
         "tags": [
           "Complaints"
         ]

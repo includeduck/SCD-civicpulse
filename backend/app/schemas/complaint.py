@@ -15,7 +15,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models.complaint import Category, Priority, Status, TriagedBy
 
@@ -65,6 +65,10 @@ class ComplaintResponse(BaseModel):
     ai_summary: str | None
     triaged_by: TriagedBy | None
     triage_latency_ms: int | None
+    triage_corrected_at: datetime | None = Field(
+        default=None,
+        description="Timestamp when an operator manually corrected category or priority, if any.",
+    )
     created_at: datetime
     updated_at: datetime
     allowed_transitions: list[Status] = Field(
@@ -90,6 +94,19 @@ class StatusUpdateRequest(BaseModel):
     """Request body for PATCH /api/complaints/{id}/status."""
 
     status: Status = Field(..., description="Target status to transition to")
+
+
+class TriageCorrectionRequest(BaseModel):
+    """Request body for PATCH /api/complaints/{id}/triage."""
+
+    category: Category | None = Field(default=None, description="Corrected category")
+    priority: Priority | None = Field(default=None, description="Corrected priority")
+
+    @model_validator(mode="after")
+    def check_at_least_one_field(self) -> TriageCorrectionRequest:
+        if self.category is None and self.priority is None:
+            raise ValueError("At least one of 'priority' or 'category' must be provided.")
+        return self
 
 
 class CategoryCount(BaseModel):

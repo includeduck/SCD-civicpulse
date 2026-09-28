@@ -157,7 +157,7 @@ Both are declared at `backend/app/models/complaint.py:93-94` and created by the 
 
 ## Why the stats cache uses a TTL *and* explicit invalidation (§2.4)
 
-- **Invalidation gives freshness.** A new complaint or status change deletes the cached stats right after the commit (`backend/app/services/complaints.py:61`, `backend/app/services/status.py:89`, which calls `backend/app/providers/cache.py:78`). The next read recomputes, so a new complaint shows up in the stats immediately rather than up to 30 s later.
+- **Invalidation gives freshness.** A new complaint, status change, or triage correction deletes the cached stats right after the commit (`backend/app/services/complaints.py:61`, `backend/app/services/status.py:89`, `backend/app/services/triage_correction.py:53`, which calls `backend/app/providers/cache.py:78`). The next read recomputes, so a new complaint or correction shows up in the stats immediately rather than up to 30 s later.
 - **The TTL is the safety net for writes the invalidation can't see.** Examples: a `DEL` lost during a Redis blip (the failure is logged, not raised, `cache.py:81`); a replica that crashes between commit and invalidate; a row changed directly in the database. The 30 s expiry set at `cache.py:72` bounds staleness no matter what goes wrong.
 - Either one alone is insufficient. With TTL only, stats lag every write by up to 30 s. With invalidation only, a single missed `DEL` leaves the stats wrong indefinitely.
 
