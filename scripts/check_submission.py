@@ -35,8 +35,9 @@ _results: list[tuple[str, str, str]] = []  # (status, name, detail)
 
 def _record(status: str, name: str, detail: str = "") -> None:
     _results.append((status, name, detail))
-    colour = {"PASS": "\033[32m", "FAIL": "\033[31m", "WARN": "\033[33m"}.get(status, "")
-    reset = "\033[0m"
+    use_colour = sys.stdout.isatty()
+    colour = {"PASS": "\033[32m", "FAIL": "\033[31m", "WARN": "\033[33m"}.get(status, "") if use_colour else ""
+    reset = "\033[0m" if use_colour else ""
     line = f"  {colour}{status}{reset}  {name}"
     if detail:
         line += f"  — {detail}"
@@ -365,20 +366,16 @@ def check_probes() -> None:
 
 # ---------------------------------------------------------------------------
 # Check: .mailmap present; git shortlog; at least 2 contributors
-# ---------------------------------------------------------------------------
-
-import subprocess  # noqa: E402
-
-
 def check_git_attribution() -> None:
     print("\n── Git attribution ──")
     check_file(".mailmap", ".mailmap (consolidates author aliases)")
 
     try:
         result = subprocess.run(
-            ["git", "shortlog", "-sn", "--no-merges"],
+            ["git", "shortlog", "-sn", "--no-merges", "HEAD"],
             capture_output=True,
             text=True,
+            stdin=subprocess.DEVNULL,
             cwd=ROOT,
             timeout=15,
         )
