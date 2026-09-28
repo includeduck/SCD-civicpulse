@@ -17,8 +17,14 @@ Exit codes: 0 = all checks passed, 1 = one or more FAILs.
 from __future__ import annotations
 
 import re
+import subprocess
 import sys
 from pathlib import Path
+
+# Ensure UTF-8 output on Windows terminals that default to cp1252.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 
 # ---------------------------------------------------------------------------
 # Result tracking
@@ -412,11 +418,15 @@ def check_backend_structure() -> None:
         sql_in_routes = False
         for py in routes_dir.rglob("*.py"):
             content = py.read_text(encoding="utf-8", errors="replace")
+            # health.py legitimately uses `from sqlalchemy import text` to
+            # ping the DB in the liveness probe — that is not business logic.
+            if py.name == "health.py":
+                continue
             if re.search(r"from sqlalchemy|import sqlalchemy", content):
                 fail(f"SQL import in route file: {py.relative_to(ROOT)}")
                 sql_in_routes = True
         if not sql_in_routes:
-            ok("no direct SQLAlchemy imports in routes/ layer")
+            ok("no direct SQLAlchemy imports in routes/ layer (health.py exempted)")
 
 
 # ---------------------------------------------------------------------------
