@@ -432,9 +432,7 @@ export interface components {
             /** Code */
             code: string;
             /** Detail */
-            detail: {
-                [key: string]: unknown;
-            }[];
+            detail: Record<string, never>[];
         };
     };
     responses: never;

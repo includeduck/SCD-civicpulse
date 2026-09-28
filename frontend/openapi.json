@@ -592,7 +592,6 @@
           },
           "detail": {
             "items": {
-              "additionalProperties": true,
               "type": "object"
             },
             "title": "Detail",
