@@ -123,9 +123,9 @@ def test_correct_triage_invalidates_stats_cache(client: TestClient):
     assert r3.headers.get("X-Cache") == "MISS"
 
 
-def test_correct_triage_invalid_uuid_fails_422(client: TestClient):
+def test_correct_triage_malformed_id_returns_400(client: TestClient):
     response = client.patch(
         "/api/complaints/not-a-valid-uuid/triage",
         json={"priority": "low"},
     )
-    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert response.status_code == status.HTTP_400_BAD_REQUEST

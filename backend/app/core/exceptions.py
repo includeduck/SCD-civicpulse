@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 
 from fastapi import Request, status
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
@@ -92,7 +93,7 @@ async def validation_exception_handler(
     """
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
-        content={"detail": exc.errors(), "code": "validation_error"},
+        content={"detail": jsonable_encoder(exc.errors()), "code": "validation_error"},
     )
 
 
@@ -103,7 +104,7 @@ async def pydantic_validation_handler(
     """Handle Pydantic v2 ValidationError raised inside business logic (→ 400)."""
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
-        content={"detail": exc.errors(), "code": "validation_error"},
+        content={"detail": jsonable_encoder(exc.errors()), "code": "validation_error"},
     )
 
 

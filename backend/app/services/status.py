@@ -8,6 +8,7 @@ keeping its own copy.
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -55,6 +56,10 @@ def to_response(complaint: Complaint) -> ComplaintResponse:
         for name in ComplaintResponse.model_fields
         if name != "allowed_transitions"
     }
+    for dt_field in ("created_at", "updated_at", "triage_corrected_at"):
+        val = fields.get(dt_field)
+        if isinstance(val, datetime) and val.tzinfo is None:
+            fields[dt_field] = val.replace(tzinfo=UTC)
     return ComplaintResponse(**fields, allowed_transitions=allowed_transitions(complaint.status))
 
 
