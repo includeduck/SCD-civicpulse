@@ -36,17 +36,17 @@ Citizens submit free text, a location and an optional contact (`reporter_contact
 
 A complaint describes a public-infrastructure problem at a place, such as a burst main on Street 12. After redaction, what reaches the provider is roughly what a citizen would post on a public noticeboard. Operators still get the full, unredacted text from our own database. Anyone for whom even this is too much can run `TRIAGE_PROVIDER=ollama`, and no complaint data leaves the machine.
 
-### Hosted Provider (Groq) Terms of Service & Privacy Policy
+### Hosted provider (Groq): data terms as observed
 
-Verified on **2026-09-28** from Groq's official policies ([Groq Privacy Policy](https://groq.com/privacy-policy/) and [Groq Console Privacy & Data Controls](https://console.groq.com/docs/privacy)):
+Checked on **2026-09-28** on Groq's live page **[Your Data in GroqCloud](https://console.groq.com/docs/your-data)**:
 
-1. **No Model Training on Customer Data:** Groq explicitly commits that customer inputs (prompts) and outputs (completions) are **never** used to train, retrain, or fine-tune AI foundation models or services without explicit customer instruction or consent.
-2. **Inference Data Retention:** For standard inference API requests, Groq does not retain prompts or completions by default.
-3. **Operational Logs & Abuse Monitoring:** In the default tier, Groq may temporarily retain input and output payloads for up to **30 days** solely for system reliability, debugging API failures, and monitoring service abuse (e.g. rate-limit bypass), after which they are purged.
-4. **Zero Data Retention (ZDR):** Organizations requiring strict compliance can enable Zero Data Retention (ZDR) via Data Controls in the Groq Console, which completely disables even the 30-day diagnostic logging.
-5. **Usage Metadata:** Only non-content operational telemetry (token counts, request latency, HTTP status codes, timestamps) is stored for account usage and billing.
+1. **No retention by default:** "By default, Groq does not retain customer data for inference requests."
+2. **Except temporary logs, up to 30 days:** data may be logged for troubleshooting errors that degrade platform reliability, or investigating suspected abuse, and "these logs are retained for up to 30 days".
+3. **Zero Data Retention (ZDR):** "All customers may enable Zero Data Retention (ZDR) in Data Controls settings"; with it on, Groq does not retain customer data even for reliability and abuse monitoring.
 
-Because our PII filter (`redact_pii()`) strips phone numbers and email addresses before submission and `reporter_contact` is never transmitted to Groq, the remaining exposure is limited to localized municipal problem descriptions that Groq retains for at most 30 days without model training.
+**Not established here: training use.** Neither that page nor Groq's [Privacy Policy](https://groq.com/privacy-policy/) (last updated 12 November 2025) says whether API inputs and outputs are used for training. The Privacy Policy states that customer data is governed instead by the Groq Services Agreement and Data Processing Addendum, which we did not review. A production deployment would need to confirm that in those documents, and should enable ZDR.
+
+So, with the PII filter (`redact_pii()`) removing phone numbers and email addresses and `reporter_contact` never sent, what could reach Groq is a municipal problem description, retained for at most 30 days (or not at all with ZDR).
 
 ## Consequences
 

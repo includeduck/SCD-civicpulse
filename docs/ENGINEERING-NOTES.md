@@ -142,51 +142,23 @@ So the model server, the component that parses complaint text, can't send it any
 
 ## Q8 — The failure: something that cost more than an hour — symptoms, what you wrongly believed first, and the exact command or log line that told you the truth
 
-### Symptoms
-During early Phase 3 integration testing of the complaint intake flow, an automated end-to-end test suite (`backend/tests/test_complaints_e2e.py`) failed intermittently on consecutive HTTP calls. The very first `POST /api/complaints` request succeeded and returned HTTP 201 with the created complaint. However, any subsequent request (either a second `POST` or a follow-up `GET /api/complaints/{id}`) immediately crashed with HTTP 500, producing this Python traceback from the database driver:
+This happened in Phase 3, during an AI-assisted (Claude Code) verification run that the repository owner was supervising. We record only what we can back up from that run and the repository.
+
+**Symptom.** An end-to-end check of the new complaint endpoints passed its first request and then failed on the second, with an error from asyncpg:
 
 ```text
-Traceback (most recent call last):
-  File ".../starlette/middleware/errors.py", line 164, in __call__
-    await self.app(scope, receive, _send)
-  ...
-  File ".../asyncpg/protocol/protocol.pyx", line 700, in asyncpg.protocol.protocol.BaseProtocol.send_message
 AttributeError: 'NoneType' object has no attribute 'send'
 ```
 
-### What we wrongly believed first
-Because this surfaced right after introducing the 4-layer architecture (`backend/app/routes/complaints.py`, `backend/app/services/complaints.py`, and `backend/app/repositories/complaint.py`), we wrongly suspected a transaction lifecycle leak or connection starvation bug in our code:
-1. We assumed `session.commit()` or `session.close()` was failing to release the connection back to SQLAlchemy's async connection pool in `backend/app/core/database.py`, leaving the session in a corrupt or detached state.
-2. We spent over an hour auditing dependency injection in `backend/app/core/dependencies.py` (`get_db`), verifying async context manager cleanup, adding verbose engine echo logging (`echo=True`), and stepping through SQLAlchemy's `async_sessionmaker`. Every test in isolation passed, but sequential requests inside a single test fixture crashed reliably.
+**What we wrongly believed first.** It surfaced right after the route → service → repository layers were written, so the first assumption was a bug in that new code: a session or transaction not being released properly.
 
-### The exact command and log line that told the truth
-The breakthrough came when we decoupled the test runner from the application server and probed the live application directly. We launched a real Uvicorn server against the test database and issued consecutive HTTP requests using `curl`:
+**What told us the truth.** Running the same requests against a real server (`uvicorn app.main:app`) instead of the test client: every endpoint worked, request after request. So the application was fine, and the test harness was the problem. Starlette's `TestClient`, used *without* a `with` block, runs each request on a fresh event loop. The pooled asyncpg connection opened during request 1 was bound to that loop; request 2 reused it after the loop had closed, and the write failed with the error above.
 
-```bash
-# Terminal 1: run real uvicorn server
-uvicorn app.main:app --port 8000
+**The fix, as it is in the repository today.**
+- The `client` fixture enters the client as a context manager, so every request in a test shares one event loop: `with TestClient(app, base_url="http://testserver") as test_client:` (`backend/tests/conftest.py:90`).
+- Unit tests use in-memory SQLite with `StaticPool` (`backend/tests/conftest.py:47-57`); the PostgreSQL behaviour is covered separately by `backend/tests/test_postgres.py`, which runs against a real Postgres service in CI.
 
-# Terminal 2: fire consecutive requests
-curl -s -X POST http://localhost:8000/api/complaints \
-  -H "Content-Type: application/json" \
-  -d '{"text": "Pothole on Main St", "location": "Sector G-10"}'
-curl -s -X POST http://localhost:8000/api/complaints \
-  -H "Content-Type: application/json" \
-  -d '{"text": "Streetlight broken", "location": "Sector F-7"}'
-```
-
-Output:
-```text
-{"id":"3fa85f64-5717-4562-b3fc-2c963f66afa6","category":"roads","priority":"medium",...}  # 201 Created
-{"id":"7c9e6679-7425-40de-944b-e07fc1f90ae7","category":"lighting","priority":"low",...} # 201 Created
-```
-Both requests returned HTTP 201 cleanly in real Uvicorn!
-
-This immediately pointed the finger at Starlette's `TestClient`. Looking at `asyncpg.connection.Connection`, each connection attaches to the running `asyncio` event loop. When `TestClient(app)` is instantiated without an explicit context manager (`with TestClient(app) as client:`), Starlette creates and destroys a brand new `asyncio` event loop for every single `.post()` or `.get()` call. Request 1 acquired an `asyncpg` connection from SQLAlchemy's persistent connection pool, attached to Event Loop 1. When Event Loop 1 closed at the end of the first request, the underlying socket in the pool remained alive, but its loop reference was garbage-collected (`self._loop = None`). Request 2 reused that pooled connection, attempted to write to the socket, and hit `NoneType has no attribute 'send'`.
-
-### Resolution
-1. In test fixtures, wrapped client usage in `with TestClient(app) as client:`, or migrated to `httpx.AsyncClient(transport=ASGITransport(app=app))` sharing a single event loop across the test.
-2. In database fixtures (`backend/tests/conftest.py`), configured SQLAlchemy's `create_async_engine` with `NullPool` for testing to guarantee fresh connections per session and avoid stale cross-loop connection pooling.
+**Lesson.** When a failure appears only in tests, first rule the harness in or out by reproducing it on the real runtime; it would have saved the time spent suspecting the new code.
 
 ---
 

@@ -14,7 +14,7 @@
 
 | Tool | Used by | Period | For |
 |------|---------|--------|-----|
-| **Antigravity** (Google DeepMind) | team (Talha Sami) | Phase 0 to Phase 2; PR reviews on #15, #17, #19, #21; Phase 15 docs and submission checks | Repository scaffold, docs stubs, initial FastAPI skeleton, database models, Alembic migrations, seed data, comprehensive PR review analysis (linking to local workspace files), submission checks, and operator triage correction |
+| **Antigravity** (Google DeepMind) | team (Talha Sami) | Phase 0 to Phase 2; PR reviews on #15, #17, #19, #21, #51, #53 and later; #56 (submission checker), #57 (operator correction), #58 (these docs) | Repository scaffold, docs stubs, initial FastAPI skeleton, database models, Alembic migrations, seed data, comprehensive PR review analysis (linking to local workspace files), submission checks, and operator triage correction |
 | **Claude Code** (Anthropic, Claude Opus model), desktop app | repository owner (Muhammad Wasay Tariq) | 2026-09-26 onwards | Plan review, defect fixes, Phases 3–14 implementation, tests, docs, GitHub Issues and PR descriptions, verification runs |
 
 ---
@@ -55,10 +55,10 @@ Decisions made by people, recorded as they happened:
 - **Commit identity.** The owner asked for the placeholder "Developer" identity to be fixed; unpushed commits were re-authored and `.mailmap` added for pushed ones.
 - **Reviews.** The partner reviewed and merged every PR.
 
-- **Preserving synchronous provider contracts (§2.5).** An early AI suggestion was to make `TriageProvider.triage` an async coroutine. We rejected this because the assignment specification mandates a synchronous interface for provider implementations, with contract tests calling it synchronously. We kept the provider interface synchronous and offloaded it via `asyncio.to_thread` in the service layer.
-- **Preventing developer data loss in integration tests.** An early version of `scripts/ci_integration.sh` ran `docker compose down -v` against the default project name, wiping local developer volumes (`pgdata`). We caught this in review and modified the script to isolate integration tests under a separate project name (`-p civicpulse-test`) with its own environment file.
-- **Tuning prompt injection filters.** AI-generated regex patterns initially risked false positives on authentic civic complaints containing phrasing like "prompt action required" or "please ignore previous delays and repair this road". We constrained the injection detector to specific command-override delimiters, role impersonation tags (`system:`, `assistant:`), and structured result faking.
-- **Handling validation error serialization.** In the triage correction route, FastAPI's default exception handler produced a 500 Internal Server Error when Pydantic v2 `ValidationError` was raised because the error structures were not directly serializable. We corrected this in `backend/app/core/exceptions.py` using FastAPI's `jsonable_encoder(exc.errors())`.
+- **Keeping the provider interface synchronous (§2.5).** An AI-written version made `TriageProvider.triage` a coroutine. It was reverted: the assignment specifies a synchronous provider interface, so the interface stayed synchronous and the service layer runs it with `asyncio.to_thread`.
+- **Developer data loss from the integration script.** The first AI-written `scripts/ci_integration.sh` shared the dev stack's Compose project name, and its cleanup (`docker compose down -v`) **deleted the owner's local database and Redis volumes**. It was not caught before it happened. The script was rewritten to run as its own project (`civicpulse-ci`) with its own env file (`.env.ci`) and a guard against running alongside the dev stack.
+- **Prompt-injection false positives and bypasses.** Reviewing #50, the owner found two new rules flagging genuine complaints ("please make this top priority", "bijli ke mehkame ko bhejein please"); they were removed and pinned as genuine test cases. The owner's own red-team runs (docs/TRIAGE.md, cases 7–9) then found three bypasses, fixed in #55.
+- **Validation-error serialization.** #57's first CI run returned 500 instead of 400 for an empty body: our own `validation_exception_handler` passed `exc.errors()`, which held a `ValueError` object, straight to `JSONResponse`. Found in the review of #57 and fixed by Talha with `jsonable_encoder(exc.errors())` in `backend/app/core/exceptions.py`.
 - **OpenAPI contract normalization.** We investigated and resolved schema discrepancies between local openapi generation and CI checks (such as the presence of `"additionalProperties": true` in Pydantic v2 exports), ensuring strict parity with the contract check in `ci.yml`.
 
 ---
@@ -69,7 +69,7 @@ The team should be able to explain these at the viva:
 
 - Groq and Ollama were initially tested against scripted HTTP responses before live Ollama verification runs were conducted (TRIAGE.md, "Measured hit rate").
 - Live provider policy terms for Groq were checked directly from the official live documentation and cited in ADR 0004.
-- Engineering-notes **Q8 (the failure story)** reflects the team's actual debugging experience with `TestClient` event loops and asyncpg connection pooling.
+- Engineering-notes **Q8 (the failure story)** records the Phase 3 `TestClient` event-loop incident, limited to what the run and the repository show.
 
 ---
 
@@ -91,8 +91,9 @@ AI models frequently exhibited blind spots regarding runtime lifecycles and assi
 5. **Schema discrepancies:** Missing nuanced serialization behaviors across differing Pydantic v2 minor versions between local environments and CI runners.
 
 ### What we verified ourselves
-Every critical claim and architectural guarantee in CivicPulse was verified directly by the team:
-- **Live Docker & K8s execution:** Running `docker compose up` and k3d clusters locally to verify network boundary isolation (confirming `internal` containers cannot route to the internet and frontend cannot reach PostgreSQL).
-- **Failure tolerance & persistence:** Validating that Redis AOF retains rate-limit windows across container restarts, and verifying that the rate limiter fails open safely if Redis crashes.
-- **Load and autoscaling behavior:** Running k6 load tests to capture real HPA scale-out response times and VPA resource recommendations.
-- **End-to-end user workflows:** Probing the frontend web application in the browser, verifying complaint intake, status progression, operator triage overrides, and cached statistics headers (`X-Cache: HIT`).
+The checks listed in the "Verification" row above (the AOF restart, the fail-open check, the k6/HPA run, network isolation) were run by Claude Code, with the owner starting Docker and watching. What the team did by hand:
+- **Red-teaming the triage (owner).** Wrote and submitted adversarial complaints in the browser against the live stack: cases 7–9 in `docs/TRIAGE.md`, with screenshots.
+- **Reviews.** Every PR was reviewed by the other partner before merging. The reviews were AI-drafted and read and posted by a person; the owner's reviews say so in their last line.
+- **Branch protection and the CI gate:** configured in GitHub by the owner, with the screenshots in `docs/evidence/`.
+
+Also done with Claude Code at the owner's request, not by hand: resolving the #48 merge conflict on #51 (`docs/evidence/merge-conflict.md`), and capturing the README screenshots from the running stack. The two operator corrections in them were made through the new `PATCH /api/complaints/{id}/triage`.
