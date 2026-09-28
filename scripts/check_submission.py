@@ -537,8 +537,47 @@ def check_probes() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Check: .mailmap present; git shortlog; at least 2 contributors
-def check_git_attribution() -> None:
+def validate_git_shortlog(
+    entries: list[tuple[int, str]],
+    allow_skew: bool = False,
+    min_total: int = 35,
+    min_share_pct: float = 35.0,
+) -> list[tuple[str, str, str]]:
+    """Validate contributor count, total commits, and minimum commit share floor."""
+    results: list[tuple[str, str, str]] = []
+    total = sum(c for c, _ in entries)
+
+    if total < min_total:
+        results.append(("FAIL", "total commits (no-merges)", f"{total} commits — assignment requires ≥ {min_total}"))
+    else:
+        results.append(("PASS", "total commits (no-merges)", f"{total} commits (≥ {min_total})"))
+
+    if len(entries) < 2:
+        results.append(("FAIL", "contributor count", f"only {len(entries)} contributor(s) in shortlog — assignment requires ≥ 2"))
+        return results
+    else:
+        results.append(("PASS", "contributor count", f"{len(entries)} contributors in shortlog"))
+
+    below_floor: list[tuple[str, int, float]] = []
+    for count, author in entries:
+        pct = (count / total * 100.0) if total > 0 else 0.0
+        if pct < min_share_pct:
+            below_floor.append((author, count, pct))
+
+    if below_floor:
+        details = ", ".join(f"{author}: {pct:.1f}% ({count}/{total})" for author, count, pct in below_floor)
+        msg = f"author commit share below {min_share_pct:.0f}% floor ({details})"
+        if allow_skew:
+            results.append(("WARN", "contributor commit balance", f"{msg} [--allow-commit-skew enabled]"))
+        else:
+            results.append(("FAIL", "contributor commit balance", f"{msg} — neither author may be below {min_share_pct:.0f}%"))
+    else:
+        results.append(("PASS", "contributor commit balance", f"all contributors meet {min_share_pct:.0f}% floor"))
+
+    return results
+
+
+def check_git_attribution(allow_skew: bool = False) -> None:
     print("\n── Git attribution ──")
     check_file(".mailmap", ".mailmap (consolidates author aliases)")
 
@@ -556,15 +595,20 @@ def check_git_attribution() -> None:
         warn("git not available — cannot check contributor counts")
         return
 
-    if len(lines) < 2:
-        fail(f"only {len(lines)} contributor(s) in shortlog — assignment requires ≥ 2")
-    else:
-        ok(f"git shortlog shows {len(lines)} contributors")
-        for line in lines:
-            print(f"       {line}")
+    entries: list[tuple[int, str]] = []
+    for line in lines:
+        parts = line.split(maxsplit=1)
+        if parts and parts[0].isdigit():
+            entries.append((int(parts[0]), parts[1] if len(parts) > 1 else ""))
 
-    total = sum(int(ln.split()[0]) for ln in lines if ln.split()[0].isdigit())
-    ok(f"total commits (no-merges): {total}")
+    total = sum(c for c, _ in entries)
+    print(f"       Total commits (no-merges): {total}")
+    for count, author in entries:
+        pct = (count / total * 100.0) if total > 0 else 0.0
+        print(f"       {count:>4} ({pct:5.1f}%)  {author}")
+
+    for status, name, detail in validate_git_shortlog(entries, allow_skew=allow_skew):
+        _record(status, name, detail)
 
 
 # ---------------------------------------------------------------------------
@@ -625,8 +669,13 @@ def check_evidence() -> None:
 # ---------------------------------------------------------------------------
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    args = argv if argv is not None else sys.argv[1:]
+    allow_skew = "--allow-commit-skew" in args or "--allow-skew" in args
+
     print("CivicPulse submission checker — brief §5.8\n")
+    if allow_skew:
+        print("  [Option] --allow-commit-skew active: author share below 35% will emit WARN\n")
 
     check_required_files()
     check_env_and_secrets()
@@ -634,7 +683,7 @@ def main() -> int:
     check_kubernetes()
     check_compose_prod()
     check_probes()
-    check_git_attribution()
+    check_git_attribution(allow_skew=allow_skew)
     check_backend_structure()
     check_evidence()
 
