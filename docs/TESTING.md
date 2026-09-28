@@ -29,6 +29,10 @@ TEST_DATABASE_URL=postgresql+asyncpg://civicpulse:civicpulse@localhost:55432/civ
 # Frontend
 cd frontend
 npm test                      # or: npm run test:coverage
+
+# Submission lint (brief §5.8: catches mechanical failures across files, Docker, K8s, Git)
+cd ..
+python scripts/check_submission.py
 ```
 
 Tests never read your `.env`: `tests/conftest.py` switches the settings' env file off, so the quickstart's `cp .env.example .env` can't change results.
