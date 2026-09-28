@@ -72,3 +72,38 @@ def check_file(path: str, label: str | None = None) -> bool:
         return True
     fail(f"{label} missing")
     return False
+
+
+# ---------------------------------------------------------------------------
+# Check: required top-level and docs files
+# ---------------------------------------------------------------------------
+
+_REQUIRED_FILES = [
+    "README.md",
+    "LICENSE",
+    ".env.example",
+    ".gitignore",
+    ".mailmap",
+    "compose.yaml",
+    "compose.prod.yaml",
+    "backend/Dockerfile",
+    "frontend/Dockerfile",
+    "backend/pyproject.toml",
+    "frontend/package.json",
+    "docs/TRIAGE.md",
+    "docs/RUNBOOK.md",
+    "docs/ENGINEERING-NOTES.md",
+    "docs/TESTING.md",
+    "docs/AI-USAGE.md",
+    "docs/SECURITY-AUDIT.md",
+    "docs/adr/0001-provider-interface.md",
+    "docs/adr/0002-frontend-runtime-config.md",
+    "docs/adr/0003-deploy-by-sha.md",
+    "docs/adr/0004-pii-and-data-governance.md",
+]
+
+
+def check_required_files() -> None:
+    print("\n── Required files ──")
+    for path in _REQUIRED_FILES:
+        check_file(path)
