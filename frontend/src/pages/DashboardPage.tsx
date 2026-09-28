@@ -199,10 +199,16 @@ function ComplaintRow({
   const [triagePending, setTriagePending] = useState(false);
   const [triageError, setTriageError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const [prevCategory, setPrevCategory] = useState(complaint.category);
+  const [prevPriority, setPrevPriority] = useState(complaint.priority);
+  if (complaint.category !== prevCategory) {
+    setPrevCategory(complaint.category);
     setCategory(complaint.category);
+  }
+  if (complaint.priority !== prevPriority) {
+    setPrevPriority(complaint.priority);
     setPriority(complaint.priority);
-  }, [complaint.category, complaint.priority]);
+  }
 
   async function move(target: Status) {
     setPending(target);
