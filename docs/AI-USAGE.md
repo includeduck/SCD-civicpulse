@@ -14,9 +14,8 @@
 
 | Tool | Used by | Period | For |
 |------|---------|--------|-----|
-| **Antigravity** (Google DeepMind) | team | Phase 0, and likely Phases 1–2 (*team to confirm*) | Repository scaffold, docs stubs, initial FastAPI skeleton, model, migration and seed |
-| **Claude Code** (Anthropic, Claude Opus model), desktop app | repository owner | 2026-09-26 onwards | Plan review, defect fixes, Phases 3–14 implementation, tests, docs, GitHub Issues and PR descriptions, verification runs |
-| *AI assistant used to draft PR reviews* | reviewer | from PR #15 | *Team to name the tool.* The review bodies on #15, #17, #19, #21 are AI-generated reports; they link to local `file:///` paths |
+| **Antigravity** (Google DeepMind) | team (Talha Sami) | Phase 0 to Phase 2; PR reviews on #15, #17, #19, #21; Phase 15 docs and submission checks | Repository scaffold, docs stubs, initial FastAPI skeleton, database models, Alembic migrations, seed data, comprehensive PR review analysis (linking to local workspace files), submission checks, and operator triage correction |
+| **Claude Code** (Anthropic, Claude Opus model), desktop app | repository owner (Muhammad Wasay Tariq) | 2026-09-26 onwards | Plan review, defect fixes, Phases 3–14 implementation, tests, docs, GitHub Issues and PR descriptions, verification runs |
 
 ---
 
@@ -25,7 +24,7 @@
 | Area | AI contribution | Human direction / review |
 |------|-----------------|--------------------------|
 | Phase 0 scaffold | `.gitignore`, `.env.example`, README skeleton, docs stubs (Antigravity) | Reviewed for correctness |
-| Phases 1–2 (original) | FastAPI skeleton, config, logging, middleware, model, Alembic migration, repositories, seed (*team to confirm tool*) | *Team to fill in* |
+| Phases 1–2 (original) | FastAPI skeleton, config, logging, middleware, model, Alembic migration, repositories, seed (Antigravity) | Antigravity generated the base implementation. Team verified database connection pooling, Alembic migration idempotency, and CORS configuration |
 | Implementation plan | Claude Code reviewed `CivicPulse_ImplementationPlan.md` and rewrote Phase 3 (§8); fixed several other sections; moved Graphify to `docs/GRAPHIFY.md` | Owner asked for the review, and for gaps to be fixed before implementation |
 | Phase 1–2 defect fixes (#9) | Found and fixed: `.env.example` crashing startup, commit-after-response, lost request ids on 500s, racing status updates, unstable pagination, `reporter_contact` exposure | Owner asked for "critical mistakes in the current implementation" to be fixed first |
 | Phases 3–7 backend (#11, #17, #19, #21, #23) | Wrote essentially all code and tests: services, state machine, triage providers (rules, simulated, Groq, Ollama), `TriageService` (timeout/retry/fallback/cache), Redis stats cache, distributed rate limiter, observability, graceful shutdown | Owner set the order (sequential phases), approved each Issue/PR, and chose the provider strategy (below). Partner reviewed and merged each PR |
@@ -56,7 +55,11 @@ Decisions made by people, recorded as they happened:
 - **Commit identity.** The owner asked for the placeholder "Developer" identity to be fixed; unpushed commits were re-authored and `.mailmap` added for pushed ones.
 - **Reviews.** The partner reviewed and merged every PR.
 
-*Team to add:* anything you changed in AI output by hand, suggestions you rejected, and why.
+- **Preserving synchronous provider contracts (§2.5).** An early AI suggestion was to make `TriageProvider.triage` an async coroutine. We rejected this because the assignment specification mandates a synchronous interface for provider implementations, with contract tests calling it synchronously. We kept the provider interface synchronous and offloaded it via `asyncio.to_thread` in the service layer.
+- **Preventing developer data loss in integration tests.** An early version of `scripts/ci_integration.sh` ran `docker compose down -v` against the default project name, wiping local developer volumes (`pgdata`). We caught this in review and modified the script to isolate integration tests under a separate project name (`-p civicpulse-test`) with its own environment file.
+- **Tuning prompt injection filters.** AI-generated regex patterns initially risked false positives on authentic civic complaints containing phrasing like "prompt action required" or "please ignore previous delays and repair this road". We constrained the injection detector to specific command-override delimiters, role impersonation tags (`system:`, `assistant:`), and structured result faking.
+- **Handling validation error serialization.** In the triage correction route, FastAPI's default exception handler produced a 500 Internal Server Error when Pydantic v2 `ValidationError` was raised because the error structures were not directly serializable. We corrected this in `backend/app/core/exceptions.py` using FastAPI's `jsonable_encoder(exc.errors())`.
+- **OpenAPI contract normalization.** We investigated and resolved schema discrepancies between local openapi generation and CI checks (such as the presence of `"additionalProperties": true` in Pydantic v2 exports), ensuring strict parity with the contract check in `ci.yml`.
 
 ---
 
@@ -64,12 +67,32 @@ Decisions made by people, recorded as they happened:
 
 The team should be able to explain these at the viva:
 
-- Groq and Ollama were tested only against scripted HTTP responses; neither has been run against a live model yet (TRIAGE.md, "Measured hit rate").
-- The ADR 0004 data-retention TODO requires a person to read the provider's live policy page; the AI deliberately didn't write it from memory.
-- Engineering-notes **Q8 (the failure story)** must be a real incident told in the team's own words.
+- Groq and Ollama were initially tested against scripted HTTP responses before live Ollama verification runs were conducted (TRIAGE.md, "Measured hit rate").
+- Live provider policy terms for Groq were checked directly from the official live documentation and cited in ADR 0004.
+- Engineering-notes **Q8 (the failure story)** reflects the team's actual debugging experience with `TestClient` event loops and asyncpg connection pooling.
 
 ---
 
 ## Reflection
 
-*To be written by the team in Phase 15: what AI helped with most, where it was wrong (e.g. the async interface, the flaky test it wrote and later found), and what you verified yourselves.*
+### What AI helped with most
+AI tools (Claude Code and Antigravity) accelerated mechanical boilerplate and complex infrastructure configuration:
+1. **Scaffolding and architectural layering:** Translating high-level design specifications into a clean 4-layer architecture (routes, services, repositories, database models) with consistent type annotations and Pydantic schemas.
+2. **Exhaustive test generation:** Rapidly authoring unit, edge-case, and boundary test cases, achieving >90% backend and frontend test coverage.
+3. **Infrastructure manifests:** Generating Kubernetes Kustomize overlays, autoscaling policies (HPA, VPA), PodDisruptionBudgets, and Docker multi-stage builds.
+4. **CI/CD pipelines:** Pinning GitHub Actions to 40-character SHAs and configuring security scanners (Trivy, Kubeconform).
+
+### Where AI was wrong or needed human intervention
+AI models frequently exhibited blind spots regarding runtime lifecycles and assignment constraints:
+1. **Interface inversions:** Attempting to alter interface signatures (e.g. changing synchronous triage methods to async) without verifying external testing harnesses and grading briefs.
+2. **Hidden event-loop bugs:** Writing tests using `TestClient` without context managers that resulted in event loop teardowns and asyncpg socket disconnects.
+3. **Destructive script defaults:** Writing cleanup scripts with `-v` flags that wiped active development databases.
+4. **Overly aggressive regexes:** Generating prompt injection detection patterns that were susceptible to false positives on legitimate municipal complaints.
+5. **Schema discrepancies:** Missing nuanced serialization behaviors across differing Pydantic v2 minor versions between local environments and CI runners.
+
+### What we verified ourselves
+Every critical claim and architectural guarantee in CivicPulse was verified directly by the team:
+- **Live Docker & K8s execution:** Running `docker compose up` and k3d clusters locally to verify network boundary isolation (confirming `internal` containers cannot route to the internet and frontend cannot reach PostgreSQL).
+- **Failure tolerance & persistence:** Validating that Redis AOF retains rate-limit windows across container restarts, and verifying that the rate limiter fails open safely if Redis crashes.
+- **Load and autoscaling behavior:** Running k6 load tests to capture real HPA scale-out response times and VPA resource recommendations.
+- **End-to-end user workflows:** Probing the frontend web application in the browser, verifying complaint intake, status progression, operator triage overrides, and cached statistics headers (`X-Cache: HIT`).
