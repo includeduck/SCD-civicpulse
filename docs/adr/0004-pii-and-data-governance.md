@@ -36,7 +36,17 @@ Citizens submit free text, a location and an optional contact (`reporter_contact
 
 A complaint describes a public-infrastructure problem at a place, such as a burst main on Street 12. After redaction, what reaches the provider is roughly what a citizen would post on a public noticeboard. Operators still get the full, unredacted text from our own database. Anyone for whom even this is too much can run `TRIAGE_PROVIDER=ollama`, and no complaint data leaves the machine.
 
-> **TODO (team, before submission):** check the hosted provider's current data-retention and training-use terms on its live policy page, and cite what you saw here, with the date. Don't rely on memory or on this document: the assignment requires citing the terms as observed.
+### Hosted provider (Groq): data terms as observed
+
+Checked on **2026-09-28** on Groq's live page **[Your Data in GroqCloud](https://console.groq.com/docs/your-data)**:
+
+1. **No retention by default:** "By default, Groq does not retain customer data for inference requests."
+2. **Except temporary logs, up to 30 days:** data may be logged for troubleshooting errors that degrade platform reliability, or investigating suspected abuse, and "these logs are retained for up to 30 days".
+3. **Zero Data Retention (ZDR):** "All customers may enable Zero Data Retention (ZDR) in Data Controls settings"; with it on, Groq does not retain customer data even for reliability and abuse monitoring.
+
+**Not established here: training use.** Neither that page nor Groq's [Privacy Policy](https://groq.com/privacy-policy/) (last updated 12 November 2025) says whether API inputs and outputs are used for training. The Privacy Policy states that customer data is governed instead by the Groq Services Agreement and Data Processing Addendum, which we did not review. A production deployment would need to confirm that in those documents, and should enable ZDR.
+
+So, with the PII filter (`redact_pii()`) removing phone numbers and email addresses and `reporter_contact` never sent, what could reach Groq is a municipal problem description, retained for at most 30 days (or not at all with ZDR).
 
 ## Consequences
 

@@ -25,6 +25,21 @@ graph TD
 
 ---
 
+## Screenshots
+
+Captured from the local Compose stack on 2026-09-28 (`llama3.2:1b` via Ollama), with real complaints.
+
+| Operations dashboard | Statistics and cache |
+|:---:|:---:|
+| [![Operations dashboard](docs/screenshots/dashboard.png)](docs/screenshots/dashboard.png) | [![Statistics](docs/screenshots/stats-cache-hit.png)](docs/screenshots/stats-cache-hit.png) |
+| *Each row shows the citizen's text, the AI summary of it, the triage and who made it. The model rated a burst water main `low` and filed the streetlight under `other`; an operator corrected both (`(triage corrected)`, #46)* | *`X-Cache: HIT` from the Redis stats cache, counts by status, category and priority, and the latest triage outcomes with real model latency (4–8 s) and rules fallbacks* |
+
+---:|:---:|:---:|
+| [![Complaint Intake](docs/screenshots/report-triage.png)](docs/screenshots/report-triage.png) | [![Operations Dashboard](docs/screenshots/dashboard.png)](docs/screenshots/dashboard.png) | [![System & Cache Statistics](docs/screenshots/stats-cache-hit.png)](docs/screenshots/stats-cache-hit.png) |
+| *Intake portal showing automated category and priority classification with model latency* | *Live operations console with operator triage overrides and status state transitions* | *Aggregated operational statistics and Redis caching metrics (`X-Cache: HIT`)* |
+
+---
+
 ## Quick Start (local)
 
 Needs Docker with Compose v2 (Docker Desktop on Windows or macOS). Nothing else.

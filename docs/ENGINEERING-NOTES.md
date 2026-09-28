@@ -4,7 +4,7 @@
 >
 > Part 1 answers the **eight questions in assignment §5.2**, in the assignment's own order and wording. Part 2 holds the other written justifications the assignment requires (indexes, cache TTL and invalidation, the Redis volume, the dev bind mount).
 >
-> Every answer cites our own files and lines, because "generic answers score zero". **Line numbers drift as code changes: re-check every reference before submission.** Sections marked *TODO* depend on phases that aren't built yet.
+> Every answer cites our own files and lines, because "generic answers score zero". **Line numbers drift as code changes: re-check every reference before submission.**
 
 ---
 
@@ -142,7 +142,23 @@ So the model server, the component that parses complaint text, can't send it any
 
 ## Q8 — The failure: something that cost more than an hour — symptoms, what you wrongly believed first, and the exact command or log line that told you the truth
 
-*TODO (team): this must be a real incident from our own work, told in our own words. Don't fabricate one. A real candidate from Phase 3: an end-to-end check failed with `AttributeError: 'NoneType' object has no attribute 'send'` from asyncpg on the second request. The first belief was a bug in the new service code. The truth was that `TestClient` without a `with` block starts a new event loop per request, so pooled Postgres connections from request 1 were bound to a dead loop. Re-running against a real `uvicorn` server showed every endpoint working.*
+This happened in Phase 3, during an AI-assisted (Claude Code) verification run that the repository owner was supervising. We record only what we can back up from that run and the repository.
+
+**Symptom.** An end-to-end check of the new complaint endpoints passed its first request and then failed on the second, with an error from asyncpg:
+
+```text
+AttributeError: 'NoneType' object has no attribute 'send'
+```
+
+**What we wrongly believed first.** It surfaced right after the route → service → repository layers were written, so the first assumption was a bug in that new code: a session or transaction not being released properly.
+
+**What told us the truth.** Running the same requests against a real server (`uvicorn app.main:app`) instead of the test client: every endpoint worked, request after request. So the application was fine, and the test harness was the problem. Starlette's `TestClient`, used *without* a `with` block, runs each request on a fresh event loop. The pooled asyncpg connection opened during request 1 was bound to that loop; request 2 reused it after the loop had closed, and the write failed with the error above.
+
+**The fix, as it is in the repository today.**
+- The `client` fixture enters the client as a context manager, so every request in a test shares one event loop: `with TestClient(app, base_url="http://testserver") as test_client:` (`backend/tests/conftest.py:90`).
+- Unit tests use in-memory SQLite with `StaticPool` (`backend/tests/conftest.py:47-57`); the PostgreSQL behaviour is covered separately by `backend/tests/test_postgres.py`, which runs against a real Postgres service in CI.
+
+**Lesson.** When a failure appears only in tests, first rule the harness in or out by reproducing it on the real runtime; it would have saved the time spent suspecting the new code.
 
 ---
 

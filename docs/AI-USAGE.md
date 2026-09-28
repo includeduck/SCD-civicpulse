@@ -14,9 +14,8 @@
 
 | Tool | Used by | Period | For |
 |------|---------|--------|-----|
-| **Antigravity** (Google DeepMind) | team | Phase 0, and likely Phases 1–2 (*team to confirm*) | Repository scaffold, docs stubs, initial FastAPI skeleton, model, migration and seed |
-| **Claude Code** (Anthropic, Claude Opus model), desktop app | repository owner | 2026-09-26 onwards | Plan review, defect fixes, Phases 3–14 implementation, tests, docs, GitHub Issues and PR descriptions, verification runs |
-| *AI assistant used to draft PR reviews* | reviewer | from PR #15 | *Team to name the tool.* The review bodies on #15, #17, #19, #21 are AI-generated reports; they link to local `file:///` paths |
+| **Antigravity** (Google DeepMind) | team (Talha Sami) | Phase 0 to Phase 2; PR reviews on #15, #17, #19, #21, #51, #53 and later; #56 (submission checker), #57 (operator correction), #58 (these docs) | Repository scaffold, docs stubs, initial FastAPI skeleton, database models, Alembic migrations, seed data, comprehensive PR review analysis (linking to local workspace files), submission checks, and operator triage correction |
+| **Claude Code** (Anthropic, Claude Opus model), desktop app | repository owner (Muhammad Wasay Tariq) | 2026-09-26 onwards | Plan review, defect fixes, Phases 3–14 implementation, tests, docs, GitHub Issues and PR descriptions, verification runs |
 
 ---
 
@@ -25,7 +24,7 @@
 | Area | AI contribution | Human direction / review |
 |------|-----------------|--------------------------|
 | Phase 0 scaffold | `.gitignore`, `.env.example`, README skeleton, docs stubs (Antigravity) | Reviewed for correctness |
-| Phases 1–2 (original) | FastAPI skeleton, config, logging, middleware, model, Alembic migration, repositories, seed (*team to confirm tool*) | *Team to fill in* |
+| Phases 1–2 (original) | FastAPI skeleton, config, logging, middleware, model, Alembic migration, repositories, seed (Antigravity) | Antigravity generated the base implementation. Team verified database connection pooling, Alembic migration idempotency, and CORS configuration |
 | Implementation plan | Claude Code reviewed `CivicPulse_ImplementationPlan.md` and rewrote Phase 3 (§8); fixed several other sections; moved Graphify to `docs/GRAPHIFY.md` | Owner asked for the review, and for gaps to be fixed before implementation |
 | Phase 1–2 defect fixes (#9) | Found and fixed: `.env.example` crashing startup, commit-after-response, lost request ids on 500s, racing status updates, unstable pagination, `reporter_contact` exposure | Owner asked for "critical mistakes in the current implementation" to be fixed first |
 | Phases 3–7 backend (#11, #17, #19, #21, #23) | Wrote essentially all code and tests: services, state machine, triage providers (rules, simulated, Groq, Ollama), `TriageService` (timeout/retry/fallback/cache), Redis stats cache, distributed rate limiter, observability, graceful shutdown | Owner set the order (sequential phases), approved each Issue/PR, and chose the provider strategy (below). Partner reviewed and merged each PR |
@@ -56,7 +55,11 @@ Decisions made by people, recorded as they happened:
 - **Commit identity.** The owner asked for the placeholder "Developer" identity to be fixed; unpushed commits were re-authored and `.mailmap` added for pushed ones.
 - **Reviews.** The partner reviewed and merged every PR.
 
-*Team to add:* anything you changed in AI output by hand, suggestions you rejected, and why.
+- **Keeping the provider interface synchronous (§2.5).** An AI-written version made `TriageProvider.triage` a coroutine. It was reverted: the assignment specifies a synchronous provider interface, so the interface stayed synchronous and the service layer runs it with `asyncio.to_thread`.
+- **Developer data loss from the integration script.** The first AI-written `scripts/ci_integration.sh` shared the dev stack's Compose project name, and its cleanup (`docker compose down -v`) **deleted the owner's local database and Redis volumes**. It was not caught before it happened. The script was rewritten to run as its own project (`civicpulse-ci`) with its own env file (`.env.ci`) and a guard against running alongside the dev stack.
+- **Prompt-injection false positives and bypasses.** Reviewing #50, the owner found two new rules flagging genuine complaints ("please make this top priority", "bijli ke mehkame ko bhejein please"); they were removed and pinned as genuine test cases. The owner's own red-team runs (docs/TRIAGE.md, cases 7–9) then found three bypasses, fixed in #55.
+- **Validation-error serialization.** #57's first CI run returned 500 instead of 400 for an empty body: our own `validation_exception_handler` passed `exc.errors()`, which held a `ValueError` object, straight to `JSONResponse`. Found in the review of #57 and fixed by Talha with `jsonable_encoder(exc.errors())` in `backend/app/core/exceptions.py`.
+- **OpenAPI contract normalization.** We investigated and resolved schema discrepancies between local openapi generation and CI checks (such as the presence of `"additionalProperties": true` in Pydantic v2 exports), ensuring strict parity with the contract check in `ci.yml`.
 
 ---
 
@@ -64,12 +67,33 @@ Decisions made by people, recorded as they happened:
 
 The team should be able to explain these at the viva:
 
-- Groq and Ollama were tested only against scripted HTTP responses; neither has been run against a live model yet (TRIAGE.md, "Measured hit rate").
-- The ADR 0004 data-retention TODO requires a person to read the provider's live policy page; the AI deliberately didn't write it from memory.
-- Engineering-notes **Q8 (the failure story)** must be a real incident told in the team's own words.
+- Groq and Ollama were initially tested against scripted HTTP responses before live Ollama verification runs were conducted (TRIAGE.md, "Measured hit rate").
+- Live provider policy terms for Groq were checked directly from the official live documentation and cited in ADR 0004.
+- Engineering-notes **Q8 (the failure story)** records the Phase 3 `TestClient` event-loop incident, limited to what the run and the repository show.
 
 ---
 
 ## Reflection
 
-*To be written by the team in Phase 15: what AI helped with most, where it was wrong (e.g. the async interface, the flaky test it wrote and later found), and what you verified yourselves.*
+### What AI helped with most
+AI tools (Claude Code and Antigravity) accelerated mechanical boilerplate and complex infrastructure configuration:
+1. **Scaffolding and architectural layering:** Translating high-level design specifications into a clean 4-layer architecture (routes, services, repositories, database models) with consistent type annotations and Pydantic schemas.
+2. **Exhaustive test generation:** Rapidly authoring unit, edge-case, and boundary test cases, achieving >90% backend and frontend test coverage.
+3. **Infrastructure manifests:** Generating Kubernetes Kustomize overlays, autoscaling policies (HPA, VPA), PodDisruptionBudgets, and Docker multi-stage builds.
+4. **CI/CD pipelines:** Pinning GitHub Actions to 40-character SHAs and configuring security scanners (Trivy, Kubeconform).
+
+### Where AI was wrong or needed human intervention
+AI models frequently exhibited blind spots regarding runtime lifecycles and assignment constraints:
+1. **Interface inversions:** Attempting to alter interface signatures (e.g. changing synchronous triage methods to async) without verifying external testing harnesses and grading briefs.
+2. **Hidden event-loop bugs:** Writing tests using `TestClient` without context managers that resulted in event loop teardowns and asyncpg socket disconnects.
+3. **Destructive script defaults:** Writing cleanup scripts with `-v` flags that wiped active development databases.
+4. **Overly aggressive regexes:** Generating prompt injection detection patterns that were susceptible to false positives on legitimate municipal complaints.
+5. **Schema discrepancies:** Missing nuanced serialization behaviors across differing Pydantic v2 minor versions between local environments and CI runners.
+
+### What we verified ourselves
+The checks listed in the "Verification" row above (the AOF restart, the fail-open check, the k6/HPA run, network isolation) were run by Claude Code, with the owner starting Docker and watching. What the team did by hand:
+- **Red-teaming the triage (owner).** Wrote and submitted adversarial complaints in the browser against the live stack: cases 7–9 in `docs/TRIAGE.md`, with screenshots.
+- **Reviews.** Every PR was reviewed by the other partner before merging. The reviews were AI-drafted and read and posted by a person; the owner's reviews say so in their last line.
+- **Branch protection and the CI gate:** configured in GitHub by the owner, with the screenshots in `docs/evidence/`.
+
+Also done with Claude Code at the owner's request, not by hand: resolving the #48 merge conflict on #51 (`docs/evidence/merge-conflict.md`), and capturing the README screenshots from the running stack. The two operator corrections in them were made through the new `PATCH /api/complaints/{id}/triage`.
