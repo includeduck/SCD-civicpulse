@@ -301,6 +301,36 @@ def validate_postgres_manifest(postgres_yaml: str) -> list[tuple[str, str, str]]
     return results
 
 
+def validate_autoscaling_and_resilience(vpa_yaml: str, pdb_yaml: str, hpa_yaml: str) -> list[tuple[str, str, str]]:
+    results: list[tuple[str, str, str]] = []
+
+    # HPA
+    if "HorizontalPodAutoscaler" in hpa_yaml:
+        if "backend" in hpa_yaml.lower():
+            results.append(("PASS", "hpa.yaml specifies HorizontalPodAutoscaler for backend", ""))
+        else:
+            results.append(("WARN", "hpa.yaml does not appear to reference backend deployment", ""))
+    else:
+        results.append(("FAIL", "hpa.yaml missing HorizontalPodAutoscaler", ""))
+
+    # PDB
+    if "PodDisruptionBudget" in pdb_yaml:
+        results.append(("PASS", "pdb.yaml specifies PodDisruptionBudget", ""))
+    else:
+        results.append(("FAIL", "pdb.yaml missing PodDisruptionBudget", ""))
+
+    # VPA with updateMode: "Off"
+    if "VerticalPodAutoscaler" in vpa_yaml:
+        if re.search(r'updateMode:\s*"?Off"?', vpa_yaml):
+            results.append(("PASS", "vpa.yaml specifies VerticalPodAutoscaler with updateMode: \"Off\"", ""))
+        else:
+            results.append(("FAIL", "vpa.yaml VerticalPodAutoscaler must set updateMode: \"Off\"", ""))
+    else:
+        results.append(("FAIL", "vpa.yaml missing VerticalPodAutoscaler", ""))
+
+    return results
+
+
 def check_kubernetes() -> None:
     print("\n── Kubernetes manifests ──")
     for path in _REQUIRED_OVERLAYS:
@@ -326,19 +356,12 @@ def check_kubernetes() -> None:
     for status, name, detail in validate_postgres_manifest(postgres_yaml):
         _record(status, name, detail)
 
-    # HPA must reference the backend.
+    # Autoscaling and resilience (HPA, PDB, VPA)
     hpa_yaml = read("k8s/base/hpa.yaml")
-    if "backend" in hpa_yaml.lower():
-        ok("hpa.yaml references backend")
-    else:
-        warn("hpa.yaml does not appear to reference backend deployment")
-
-    # VPA must exist (recommender mode).
+    pdb_yaml = read("k8s/base/pdb.yaml")
     vpa_yaml = read("k8s/base/vpa.yaml")
-    if "VerticalPodAutoscaler" in vpa_yaml:
-        ok("vpa.yaml contains VerticalPodAutoscaler resource")
-    else:
-        fail("vpa.yaml missing or does not contain VerticalPodAutoscaler")
+    for status, name, detail in validate_autoscaling_and_resilience(vpa_yaml, pdb_yaml, hpa_yaml):
+        _record(status, name, detail)
 
 
 # ---------------------------------------------------------------------------
