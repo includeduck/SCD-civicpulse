@@ -26,6 +26,7 @@ from app.services.meta import MetaService
 from app.services.stats import StatsService
 from app.services.status import StatusService
 from app.services.triage import TriageService
+from app.services.triage_correction import TriageCorrectionService
 
 # ── Engine / session factory (created lazily on first request) ──────────────
 # The engine is module-level so it is shared across the process lifetime.
@@ -158,6 +159,12 @@ def get_status_service(
     return StatusService(db, cache)
 
 
+def get_triage_correction_service(
+    db: DbSession, cache: Annotated[StatsCache, Depends(get_stats_cache)]
+) -> TriageCorrectionService:
+    return TriageCorrectionService(db, cache)
+
+
 def get_stats_service(
     db: DbSession, cache: Annotated[StatsCache, Depends(get_stats_cache)]
 ) -> StatsService:
@@ -174,5 +181,8 @@ def get_meta_service(
 
 ComplaintServiceDep = Annotated[ComplaintService, Depends(get_complaint_service)]
 StatusServiceDep = Annotated[StatusService, Depends(get_status_service)]
+TriageCorrectionServiceDep = Annotated[
+    TriageCorrectionService, Depends(get_triage_correction_service)
+]
 StatsServiceDep = Annotated[StatsService, Depends(get_stats_service)]
 MetaServiceDep = Annotated[MetaService, Depends(get_meta_service)]
