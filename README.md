@@ -204,6 +204,7 @@ Every action is pinned to a commit SHA, and Trivy and kubeconform run from image
 | `GET` | `/api/complaints` | List complaints (filterable, paginated) | ✅ |
 | `GET` | `/api/complaints/{id}` | Get a single complaint | ✅ |
 | `PATCH` | `/api/complaints/{id}/status` | Transition complaint status | ✅ |
+| `PATCH` | `/api/complaints/{id}/triage` | Correct complaint category and/or priority (invalidates stats cache) | ✅ |
 | `GET` | `/api/stats` | Aggregate stats, Redis read-through cache (30 s TTL, invalidated on write), `X-Cache: HIT\|MISS` | ✅ |
 | `GET` | `/api/meta/providers` | Active triage provider, last 20 triage outcomes, AI-cache hit rate | ✅ |
 | `GET` | `/health` | Liveness probe (no DB) | ✅ |
