@@ -105,7 +105,7 @@ validate, cache 24 h                RuleBasedTriage, triaged_by = "rules:fallbac
 | Retry | Exactly one retry, only when `error.retryable` (timeout, 429, 5xx); never on 400 or invalid output. Delay = `TRIAGE_RETRY_BASE_SECONDS` × uniform(0.5, 1.5) | `TriageService._call_with_retry` |
 | Fallback | Any failure, including unexpected exceptions, is answered by `RuleBasedTriage` and stored as `rules:fallback`. One WARNING `triage_fallback` with `complaint_id`, `provider`, `error_class` (plus `request_id`). A citizen never gets a 500 because a provider failed | `TriageService.triage` |
 | Latency | `triage_latency_ms` covers everything the citizen waited for: cache lookup, call, retry and fallback | `TriageOutcome` |
-| AI cache | Redis key `triage:{provider}:{sha256(normalised text + location)}`, TTL `REDIS_AI_CACHE_TTL` (86400 s). Only real provider results are cached, never fallbacks. Hit and miss counts are kept in Redis, so the rate covers every replica. If Redis fails, lookups count as misses and triage continues | `app/providers/triage_cache.py` |
+| AI cache | Redis key `triage:{provider}:{sha256(system prompt + normalised text + location)}` (the prompt is included so a prompt change never serves answers given under the old one), TTL `REDIS_AI_CACHE_TTL` (86400 s). Only real provider results are cached, never fallbacks. Hit and miss counts are kept in Redis, so the rate covers every replica. If Redis fails, lookups count as misses and triage continues | `app/providers/triage_cache.py` |
 | Injection guardrail | See below | `prompt.py` |
 | PII | `reporter_contact` is never sent; phone numbers and emails in the text are redacted (ADR 0004) | `prompt.redact_pii` |
 | Secrets | `GROQ_API_KEY` is a `SecretStr`; error messages carry status codes only | `config.py`, `_http.py` |
@@ -150,6 +150,16 @@ What these show:
 - **Case 9 has no complaint in it at all**, yet it is stored as a high-priority road hazard, and the summary sounds plausible. A small model echoes whatever words dominate its input. Unlike case 5, this is cheap to detect, because genuine complaints describe something: flag text that is mostly category and priority labels, or mostly one repeated word. The rules fallback then gives `roads · normal`, the most anyone can infer from an empty report.
 - In all three cases a human operator is the remaining control: each complaint is marked `llm:ollama`, case 8's summary is visibly absurd, and case 9's original text shows there is no complaint.
 
+**After the fixes (#54), re-run live** with the exact stored texts against the rebuilt backend (`llama3.2:1b`):
+
+| # | Change | Live output (`POST /api/complaints`) |
+|---|---|---|
+| 7 | System prompt: the summary describes only the reported problem, without ticket numbers, past decisions or claimed official replies | `llm:ollama` / `roads · low`, 5361 ms, summary *"Leaves piled around exposed junction box, need to be cleared"*. **Partly fixed:** "reopening CP-2291" is gone. The junction box stays, because it's the citizen's own (unverified) claim about the scene, and no prompt can check that; the operator view in #46 is the control for it |
+| 8 | New `dictate_output` rule on the shape *priority/urgency … to/as/= level*, whatever the verb | **Detected**: `rules:fallback` / `other · normal`, 1 ms |
+| 9 | New `label_flooding` check: a field of 6+ words that is mostly category/priority labels, or mostly one word | **Detected**: `rules:fallback` / `roads · normal`, 1 ms |
+
+Case 7's 5361 ms shows a real model call, not a cached answer. The AI cache key now includes the system prompt, so answers given under the old prompt aren't served for 24 h after a change like this one.
+
 **Its limits, stated plainly.**
 
 - **Heuristic boundary:** Pattern matching stops known syntax and structural attacks. It cannot parse subjective intent or detect every semantic paraphrase; layers 2–4 remain behind it.
@@ -159,7 +169,7 @@ What these show:
 
 Tests:
 
-- `tests/test_triage_injection.py`: 21 injection variants detected (including all red-team attack vectors); 16 genuine complaints not flagged; Case #5 verified as non-flagged; homoglyphs and mixed scripts tested; model is never called on injections and results are never cached; exactly one WARNING; API stores `rules:fallback`.
+- `tests/test_triage_injection.py`: 21 injection variants detected (including all red-team attack vectors); 16 genuine complaints not flagged; Case #5 verified as non-flagged; homoglyphs and mixed scripts tested; round 2: cases 8 and 9 plus 4 variants detected, 10 more genuine controls (including "Road road road, har jagah gaddhe hain" and place names such as "Water Works Road near High Court") not flagged, and case 9 falls back to `roads · normal`; model is never called on injections and results are never cached; exactly one WARNING; API stores `rules:fallback`.
 - `tests/test_triage_llm.py::test_10_…`: a model that "obeys" with out-of-enum values is rejected by the schema.
 
 ### Observability
