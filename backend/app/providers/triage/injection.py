@@ -166,6 +166,13 @@ _RULES: tuple[tuple[str, str], ...] = (
         + _OBJECT
         + rf"\s+(as|to|under)\s+({_CATEGORIES})\b",
     ),
+    # The shape of a priority order, whatever the verb: "bump the priority up
+    # to high", "raise the urgency to high" (red-team case 8, #54). A verb list
+    # only moves the gap to the next verb.
+    (
+        "dictate_output",
+        rf"\b(priority|urgency)\b(\s+\w+){{0,3}}?\s+(to|as|=)\s+({_PRIORITIES})\b",
+    ),
     ("dictate_output", rf"\b({_PRIORITY_KEYS})\s*[=:]\s*[\"']?({_PRIORITIES})\b"),
     ("dictate_output", rf"\b({_CATEGORY_KEYS})\s*[=:]\s*[\"']?({_CATEGORIES})\b"),
     (
@@ -232,6 +239,25 @@ def _normalise(text: str) -> str:
     return re.sub(r"\s+", " ", text)
 
 
+# Label flooding (red-team case 9, #54): "Roads Roads ... High High ..." with
+# no description at all made the model answer roads/high and invent a
+# "major road hazard". A genuine complaint describes something, so a field
+# that is mostly answer labels, or mostly one repeated word, is flagged.
+# Below _FLOOD_MIN_WORDS there is too little text to judge ("Water Works Road").
+_LABELS = frozenset(f"{_PRIORITIES}|{_CATEGORIES}|road|streetlight|priority|category".split("|"))
+_FLOOD_MIN_WORDS = 6
+_FLOOD_SHARE = 0.5
+
+
+def _is_label_flooding(normalised: str) -> bool:
+    words = re.findall(r"[^\W\d_]+", normalised)
+    if len(words) < _FLOOD_MIN_WORDS:
+        return False
+    labels = sum(word in _LABELS for word in words)
+    top = max(words.count(word) for word in set(words))
+    return labels / len(words) > _FLOOD_SHARE or top / len(words) > _FLOOD_SHARE
+
+
 def detect_injection(*fields: str) -> str | None:
     """Name of the first injection rule matched in any field, or None."""
     for field in fields:
@@ -241,4 +267,6 @@ def detect_injection(*fields: str) -> str | None:
         for name, pattern in _PATTERNS:
             if pattern.search(normalised):
                 return name
+        if _is_label_flooding(normalised):
+            return "label_flooding"
     return None
