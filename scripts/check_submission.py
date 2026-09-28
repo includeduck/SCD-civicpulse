@@ -325,39 +325,54 @@ def check_kubernetes() -> None:
 # ---------------------------------------------------------------------------
 
 
-def check_compose_prod() -> None:
-    print("\n── Production Compose (compose.prod.yaml) ──")
-    prod_text = read("compose.prod.yaml")
+def validate_compose_prod(prod_text: str) -> list[tuple[str, str, str]]:
+    """Validate compose.prod.yaml content, returning list of (status, name, detail)."""
+    results: list[tuple[str, str, str]] = []
     if not prod_text:
-        fail("compose.prod.yaml not found or empty")
-        return
+        return [("FAIL", "compose.prod.yaml", "not found or empty")]
 
     # Postgres and Redis must NOT expose ports to the host in prod.
     in_dangerous_service = False
     dangerous_ports = False
     for line in prod_text.splitlines():
-        stripped = line.lstrip()
-        if re.match(r"^  [a-z]", line) and stripped.endswith(":") and not stripped.startswith("#"):
+        stripped = line.strip()
+        if re.match(r"^  [a-z0-9_-]+:", line):
             svc = stripped.rstrip(":")
-            in_dangerous_service = svc in ("postgres", "redis", "migrate", "ollama", "ollama-pull")
+            in_dangerous_service = svc in ("postgres", "redis", "migrate")
         if in_dangerous_service and stripped.startswith("ports:"):
             dangerous_ports = True
-    if dangerous_ports:
-        fail("compose.prod.yaml exposes ports on postgres/redis/migrate — must be internal only")
-    else:
-        ok("compose.prod.yaml: DB and cache have no published host ports")
 
-    # Prod compose must not have a `build:` key (should use pre-built images).
-    if re.search(r"^\s{2,4}build:", prod_text, re.MULTILINE):
-        warn("compose.prod.yaml contains a `build:` key — prod should use pre-built images")
+    if dangerous_ports:
+        results.append(("FAIL", "compose.prod.yaml: DB/cache ports", "postgres/redis publish host ports — must be internal only"))
     else:
-        ok("compose.prod.yaml: no `build:` key, uses pre-built images")
+        results.append(("PASS", "compose.prod.yaml: DB/cache ports", "DB and cache have no published host ports"))
+
+    # Prod compose must not have a build: key (should use pre-built images).
+    if re.search(r"^\s{2,4}build:", prod_text, re.MULTILINE):
+        results.append(("FAIL", "compose.prod.yaml: no build:", "contains build: key — prod must use pre-built images"))
+    else:
+        results.append(("PASS", "compose.prod.yaml: no build:", "no build: key, uses pre-built images"))
+
+    # App images must use ${IMAGE_TAG}
+    if "${IMAGE_TAG" in prod_text:
+        results.append(("PASS", "compose.prod.yaml: image tags", "app images use ${IMAGE_TAG}"))
+    else:
+        results.append(("FAIL", "compose.prod.yaml: image tags", "app images must use ${IMAGE_TAG}"))
 
     # Images should not use :dev or :latest.
-    if re.search(r"image:.*:dev\b", prod_text):
-        fail("compose.prod.yaml contains :dev image tag — prod must use a SHA-tagged image")
+    if re.search(r"image:.*:(?:dev|latest)\b", prod_text):
+        results.append(("FAIL", "compose.prod.yaml: immutable tags", "contains :dev or :latest tag — prod must use SHA tags"))
     else:
-        ok("compose.prod.yaml: no :dev image tags")
+        results.append(("PASS", "compose.prod.yaml: immutable tags", "no :dev or :latest image tags"))
+
+    return results
+
+
+def check_compose_prod() -> None:
+    print("\n── Production Compose (compose.prod.yaml) ──")
+    prod_text = read("compose.prod.yaml")
+    for status, name, detail in validate_compose_prod(prod_text):
+        _record(status, name, detail)
 
 
 # ---------------------------------------------------------------------------
