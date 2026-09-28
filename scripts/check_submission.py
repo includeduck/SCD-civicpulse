@@ -276,3 +276,43 @@ def check_kubernetes() -> None:
         ok("vpa.yaml contains VerticalPodAutoscaler resource")
     else:
         fail("vpa.yaml missing or does not contain VerticalPodAutoscaler")
+
+
+# ---------------------------------------------------------------------------
+# Check: production Compose (compose.prod.yaml) constraints
+# ---------------------------------------------------------------------------
+
+
+def check_compose_prod() -> None:
+    print("\n── Production Compose (compose.prod.yaml) ──")
+    prod_text = read("compose.prod.yaml")
+    if not prod_text:
+        fail("compose.prod.yaml not found or empty")
+        return
+
+    # Postgres and Redis must NOT expose ports to the host in prod.
+    in_dangerous_service = False
+    dangerous_ports = False
+    for line in prod_text.splitlines():
+        stripped = line.lstrip()
+        if re.match(r"^  [a-z]", line) and stripped.endswith(":") and not stripped.startswith("#"):
+            svc = stripped.rstrip(":")
+            in_dangerous_service = svc in ("postgres", "redis", "migrate", "ollama", "ollama-pull")
+        if in_dangerous_service and stripped.startswith("ports:"):
+            dangerous_ports = True
+    if dangerous_ports:
+        fail("compose.prod.yaml exposes ports on postgres/redis/migrate — must be internal only")
+    else:
+        ok("compose.prod.yaml: DB and cache have no published host ports")
+
+    # Prod compose must not have a `build:` key (should use pre-built images).
+    if re.search(r"^\s{2,4}build:", prod_text, re.MULTILINE):
+        warn("compose.prod.yaml contains a `build:` key — prod should use pre-built images")
+    else:
+        ok("compose.prod.yaml: no `build:` key, uses pre-built images")
+
+    # Images should not use :dev or :latest.
+    if re.search(r"image:.*:dev\b", prod_text):
+        fail("compose.prod.yaml contains :dev image tag — prod must use a SHA-tagged image")
+    else:
+        ok("compose.prod.yaml: no :dev image tags")
