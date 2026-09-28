@@ -3,7 +3,8 @@
 Duplicate complaints ("a burst main gets reported by nine neighbours") cost one
 inference, not nine. Keys are a SHA-256 of the normalised complaint and include
 the provider label, so switching TRIAGE_PROVIDER never serves another
-provider's answers. TTL is 24 h.
+provider's answers, and the system prompt, so a prompt change never serves
+answers given under the old one. TTL is 24 h.
 
 Hit and miss counts are kept in Redis, not in process memory, so the reported
 hit rate covers every backend replica.
@@ -24,6 +25,7 @@ from redis.exceptions import RedisError
 
 from app.core.logging import get_logger
 from app.providers.triage.base import TriageResult
+from app.providers.triage.prompt import SYSTEM_PROMPT
 
 logger = get_logger(__name__)
 
@@ -36,7 +38,11 @@ def _normalise(value: str) -> str:
 
 
 def triage_cache_key(provider: str, text: str, location: str) -> str:
-    digest = hashlib.sha256(f"{_normalise(text)}\x00{_normalise(location)}".encode()).hexdigest()
+    # The system prompt is part of the digest: after a prompt change, answers
+    # given under the old prompt are misses, not served for another 24 h.
+    digest = hashlib.sha256(
+        f"{SYSTEM_PROMPT}\x00{_normalise(text)}\x00{_normalise(location)}".encode()
+    ).hexdigest()
     return f"triage:{provider}:{digest}"
 
 

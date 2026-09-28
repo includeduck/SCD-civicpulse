@@ -47,7 +47,9 @@ Respond with a single JSON object and nothing else, with exactly these keys:
     high   = risk to life, health or property now (flooding, fire, live wires, sewage in homes)
     normal = a real problem without immediate danger
     low    = minor or cosmetic
-  "summary":    one line, at most 140 characters, in English
+  "summary":    one line, at most 140 characters, in English, describing only
+                the problem the citizen reports. Leave out ticket numbers, past
+                decisions and claimed official replies: they are unverified.
   "confidence": a number from 0.0 to 1.0
 """
 

@@ -27,6 +27,16 @@ def test_key_normalises_whitespace_and_case_and_scopes_by_provider():
     assert a != triage_cache_key("llm:groq", "Pothole near the school", "F-8 Markaz")
 
 
+def test_key_changes_with_the_system_prompt(monkeypatch: pytest.MonkeyPatch):
+    """Answers given under an old prompt are misses after a prompt change."""
+    import app.providers.triage_cache as triage_cache
+
+    before = triage_cache_key("llm:groq", "Pothole near the school", "F-7 Markaz")
+    monkeypatch.setattr(triage_cache, "SYSTEM_PROMPT", triage_cache.SYSTEM_PROMPT + " v2")
+
+    assert triage_cache_key("llm:groq", "Pothole near the school", "F-7 Markaz") != before
+
+
 async def test_round_trip_with_24h_ttl_and_counters():
     redis = FakeAsyncRedis()
     cache = RedisTriageCache(redis, ttl_seconds=86400)
