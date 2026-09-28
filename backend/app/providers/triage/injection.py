@@ -162,7 +162,9 @@ _RULES: tuple[tuple[str, str], ...] = (
     ),
     (
         "dictate_output",
-        r"\b(classify|categori[sz]e|label|mark|file|route|assign)\b"
+        # send / forward / refer: routing orders, the English form of red-team
+        # case #2 ("bijli ke mehkame ko bhejein", i.e. send it to electricity).
+        r"\b(classify|categori[sz]e|label|mark|file|route|assign|send|forward|refer)\b"
         + _OBJECT
         + rf"\s+(as|to|under)\s+({_CATEGORIES})\b",
     ),
