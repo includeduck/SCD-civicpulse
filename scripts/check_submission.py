@@ -229,6 +229,37 @@ _REQUIRED_WORKFLOWS = {
 }
 
 
+def validate_workflow_security(workflow_texts: dict[str, str]) -> list[tuple[str, str, str]]:
+    """Validate workflow permissions and deployment job dependencies."""
+    results: list[tuple[str, str, str]] = []
+
+    # Check top-level permissions block in each workflow
+    for name in sorted(workflow_texts.keys()):
+        content = workflow_texts[name]
+        if re.search(r"^permissions:", content, re.MULTILINE):
+            results.append(("PASS", f"{name} specifies top-level permissions:", ""))
+        else:
+            results.append(("FAIL", f"{name} missing top-level permissions: block", ""))
+
+    # Check cd.yml publishing/deploying jobs have needs:
+    cd_text = workflow_texts.get("cd.yml", "")
+    if cd_text:
+        if re.search(r"^\s{2}build-push:[\s\S]*?^\s{4}needs:", cd_text, re.MULTILINE):
+            results.append(("PASS", "cd.yml: build-push job has needs: dependency", ""))
+        else:
+            results.append(("FAIL", "cd.yml: build-push job missing needs: dependency", ""))
+
+    # Check release.yml publishing jobs have needs:
+    release_text = workflow_texts.get("release.yml", "")
+    if release_text:
+        if re.search(r"^\s{2}release:[\s\S]*?^\s{4}needs:", release_text, re.MULTILINE):
+            results.append(("PASS", "release.yml: release job has needs: dependency", ""))
+        else:
+            results.append(("FAIL", "release.yml: release job missing needs: dependency", ""))
+
+    return results
+
+
 def check_workflows() -> None:
     print("\n── GitHub Actions workflows ──")
     wf_dir = ROOT / ".github" / "workflows"
@@ -241,6 +272,13 @@ def check_workflows() -> None:
             ok(f"{fname} present ({label})")
         else:
             fail(f"{fname} missing — {label}")
+
+    # Permissions and job dependency checks
+    wfs: dict[str, str] = {}
+    for path in wf_dir.glob("*.yml"):
+        wfs[path.name] = path.read_text(encoding="utf-8")
+    for status, name, detail in validate_workflow_security(wfs):
+        _record(status, name, detail)
 
     # All action pins should use a SHA digest (@abc1234…), not a mutable tag.
     unpinned: list[str] = []
